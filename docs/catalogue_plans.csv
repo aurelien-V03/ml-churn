@@ -1,0 +1,5 @@
+﻿plan,prix_mensuel_par_siege_eur,fonctionnalites_incluses,sla_reponse_h,quota_stockage_go,support_dedie
+Starter,12,8,24,10,Non
+Pro,25,16,12,100,Non
+Business,45,26,6,500,Oui
+Enterprise,80,40,3,2000,Oui
