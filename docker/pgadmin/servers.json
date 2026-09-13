@@ -1,0 +1,14 @@
+{
+  "Servers": {
+    "1": {
+      "Name": "ml-churn",
+      "Group": "Servers",
+      "Host": "postgres",
+      "Port": 5432,
+      "MaintenanceDB": "mlchurn",
+      "Username": "mlchurn",
+      "SSLMode": "prefer",
+      "Comment": "PostgreSQL local du projet ml-churn (schemas bronze/silver/gold)"
+    }
+  }
+}
