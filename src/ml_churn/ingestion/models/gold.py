@@ -1,8 +1,8 @@
-"""Couche silver : donnees nettoyees et typees a partir de la couche bronze.
+"""Couche gold : donnees pretes a l'usage, exposees aux consommateurs.
 
-Contrairement au bronze (tout en texte), chaque colonne porte ici son vrai
-type : la conversion est faite par l'action `typer_colonnes` de
-ingestion/scripts/ingest_silver.py.
+Les tables reprennent la structure de silver (memes colonnes, memes types),
+mais les definitions sont independantes : chaque couche peut evoluer sans
+entrainer l'autre.
 """
 
 from __future__ import annotations
@@ -16,18 +16,18 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from ml_churn.ingestion.models.base import Base
 
-SILVER_SCHEMA = "silver"
+GOLD_SCHEMA = "gold"
 
 
-class CatalogueSilver(Base):
+class CatalogueGold(Base):
     """Catalogue des offres : un plan par ligne.
 
-    `plan` porte le meme code que `ChurnSaasSilver.plan` (STR, PRO, BUS, ENT),
+    `plan` porte le meme code que `ChurnSaasGold.plan` (STR, PRO, BUS, ENT),
     ce qui permet de joindre les deux tables.
     """
 
-    __tablename__ = "catalogue_silver"
-    __table_args__: ClassVar[dict[str, Any]] = {"schema": SILVER_SCHEMA}
+    __tablename__ = "catalogue_gold"
+    __table_args__: ClassVar[dict[str, Any]] = {"schema": GOLD_SCHEMA}
 
     plan: Mapped[str] = mapped_column(String(3), primary_key=True)
     prix_mensuel_par_siege_eur: Mapped[Decimal | None] = mapped_column(Numeric(8, 2))
@@ -41,11 +41,11 @@ class CatalogueSilver(Base):
     )
 
 
-class ChurnSaasSilver(Base):
+class ChurnSaasGold(Base):
     """Un client par ligne, `client_id` unique."""
 
-    __tablename__ = "churn_saas_silver"
-    __table_args__: ClassVar[dict[str, Any]] = {"schema": SILVER_SCHEMA}
+    __tablename__ = "churn_saas_gold"
+    __table_args__: ClassVar[dict[str, Any]] = {"schema": GOLD_SCHEMA}
 
     client_id: Mapped[str] = mapped_column(String(20), primary_key=True)
     date_souscription: Mapped[date | None] = mapped_column(Date)
