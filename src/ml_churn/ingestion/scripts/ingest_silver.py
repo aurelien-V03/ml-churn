@@ -233,7 +233,7 @@ def standardiser_plan(df: pd.DataFrame, echo: bool = True) -> pd.DataFrame:
 def standardiser_couleur_theme_interface(
     df: pd.DataFrame, echo: bool = True
 ) -> pd.DataFrame:
-    """clair -> C, vert -> V, bleu -> B, violet -> V, sombre -> S."""
+    """clair -> C, vert -> VE, bleu -> B, violet -> V, sombre -> S."""
     return _standardiser_categorie(df, "couleur_theme_interface", COULEURS_THEME, echo)
 
 
