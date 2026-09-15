@@ -24,6 +24,8 @@ from ml_churn.ingestion.db import ensure_schema, get_engine, get_session
 from ml_churn.ingestion.models import (
     SILVER_SCHEMA,
     Base,
+    CatalogueBronze,
+    CatalogueSilver,
     ChurnSaasCompletBronze,
     ChurnSaasSilver,
 )
@@ -126,6 +128,12 @@ def _separer_groupe(groupe: str) -> None:
     if _groupe_precedent is not None and groupe != _groupe_precedent:
         print()
     _groupe_precedent = groupe
+
+
+def _reinitialiser_groupes() -> None:
+    """Repart d'un etat neutre : deux executions successives restent lisibles."""
+    global _groupe_precedent
+    _groupe_precedent = None
 
 
 def _log_action(
@@ -338,8 +346,6 @@ def deriver_polarite_csm(df: pd.DataFrame, echo: bool = True) -> pd.DataFrame:
 # Bornes attendues, valeur incluses.
 BORNES: dict[str, tuple[float, float]] = {
     "anciennete_mois": (1, 36),
-    "sieges_souscrits": (1, 898),
-    "utilisateurs_actifs": (0, 829),
     "taux_adoption_pct": (0, 100),
     "csat": (1, 5),
     "sante_compte_fin_periode": (0, 100),
@@ -371,6 +377,24 @@ def _dans_bornes(df: pd.DataFrame, colonne: str) -> pd.Series:
     return ~_renseignee(df, colonne) | _numerique(df, colonne).between(mini, maxi)
 
 
+def _utilisateurs_actifs_valides(df: pd.DataFrame) -> pd.Series:
+    """Positif, et plafonne au nombre de sieges souscrits par le client.
+
+    Le plafond n'est pas une constante : c'est la valeur de `sieges_souscrits`
+    de la ligne. Si l'une des deux colonnes manque, la comparaison est
+    impossible et la ligne est conservee.
+    """
+    actifs = _numerique(df, "utilisateurs_actifs")
+    sieges = _numerique(df, "sieges_souscrits")
+    renseigne = _renseignee(df, "utilisateurs_actifs")
+
+    positif = ~renseigne | (actifs >= 0)
+    sous_plafond = ~(renseigne & _renseignee(df, "sieges_souscrits")) | (
+        actifs <= sieges
+    )
+    return positif & sous_plafond
+
+
 @dataclass(frozen=True)
 class RegleMetier:
     """Une regle : la colonne concernee et le predicat des lignes conservees."""
@@ -398,26 +422,9 @@ REGLES_METIER: tuple[RegleMetier, ...] = (
         lambda df: _dans_bornes(df, "anciennete_mois"),
     ),
     RegleMetier(
-        "sieges_souscrits",
-        "entre 1 et 898",
-        lambda df: _dans_bornes(df, "sieges_souscrits"),
-    ),
-    RegleMetier(
         "utilisateurs_actifs",
-        "entre 0 et 829, et <= sieges_souscrits",
-        lambda df: (
-            _dans_bornes(df, "utilisateurs_actifs")
-            & (
-                ~(
-                    _renseignee(df, "utilisateurs_actifs")
-                    & _renseignee(df, "sieges_souscrits")
-                )
-                | (
-                    _numerique(df, "utilisateurs_actifs")
-                    <= _numerique(df, "sieges_souscrits")
-                )
-            )
-        ),
+        "entre 0 et sieges_souscrits",
+        lambda df: _utilisateurs_actifs_valides(df),
     ),
     RegleMetier(
         "taux_adoption_pct",
@@ -558,6 +565,51 @@ IMPUTATIONS_MEDIANE: tuple[str, ...] = (
 IMPUTATIONS_MODE: tuple[str, ...] = ("secteur", "pays")
 
 
+def imputer_revenu_par_catalogue(df: pd.DataFrame, echo: bool = True) -> pd.DataFrame:
+    """Reconstitue le revenu manquant : sieges souscrits x prix du plan.
+
+    Le prix vient de `catalogue_silver`, deja chargee a ce stade. Sur les lignes
+    ou le revenu est connu, ce calcul le retrouve a environ 9 % pres (remises
+    commerciales), contre 91 % pour une imputation par la mediane.
+    """
+    colonne = "revenu_mensuel_recurrent_eur"
+    df = df.copy()
+
+    prix_par_plan = pd.read_sql(
+        select(CATALOGUE_CIBLE.plan, CATALOGUE_CIBLE.prix_mensuel_par_siege_eur),
+        get_engine(),
+    ).set_index("plan")["prix_mensuel_par_siege_eur"]
+
+    revenus = pd.to_numeric(df[colonne], errors="coerce")
+    avant = int(revenus.notna().sum())
+
+    calcules = pd.to_numeric(df["sieges_souscrits"], errors="coerce") * df["plan"].map(
+        prix_par_plan.astype(float)
+    )
+    completes = revenus.fillna(calcules)
+
+    df[colonne] = completes.map(
+        lambda valeur: round(float(valeur), 2) if pd.notna(valeur) else None
+    ).astype(object)
+
+    if echo:
+        _log_action(
+            f"imputation {colonne}",
+            avant,
+            int(completes.notna().sum()),
+            "valeurs",
+            detail=" (sieges x prix du plan)",
+        )
+        restantes = int(completes.isna().sum())
+        if restantes:
+            print(
+                f"WARNING : {colonne} : {restantes} valeurs non calculables "
+                f"(sieges ou plan manquant)"
+            )
+
+    return df
+
+
 def imputer_valeurs_manquantes(df: pd.DataFrame, echo: bool = True) -> pd.DataFrame:
     """Comble les valeurs manquantes : mediane pour les numeriques, mode pour
     les categorielles.
@@ -636,6 +688,7 @@ TRANSFORMATIONS: tuple[Transformation, ...] = (
     deriver_polarite_csm,
     appliquer_regles_metier,
     typer_colonnes,
+    imputer_revenu_par_catalogue,
     imputer_valeurs_manquantes,
 )
 
@@ -672,6 +725,87 @@ def _log_donnees_manquantes(df: pd.DataFrame) -> None:
         ascending=False, kind="stable"
     ).items():
         print(f"  {colonne:<{largeur}} : {int(nombre) / len(df):>5.1%} ({int(nombre)})")
+
+
+# --- Catalogue des plans ------------------------------------------------
+
+CATALOGUE_SOURCE = CatalogueBronze
+CATALOGUE_CIBLE = CatalogueSilver
+
+CATALOGUE_ENTIERS: tuple[str, ...] = (
+    "fonctionnalites_incluses",
+    "sla_reponse_h",
+    "quota_stockage_go",
+)
+CATALOGUE_DECIMAUX: tuple[str, ...] = ("prix_mensuel_par_siege_eur",)
+
+BOOLEENS = {"oui": True, "non": False}
+
+
+def ingerer_catalogue(session: Session, *, echo: bool = True) -> int:
+    """bronze.catalogue_bronze -> silver.catalogue_silver.
+
+    Le plan recoit le meme code que dans `churn_saas_silver`, condition pour
+    pouvoir joindre les deux tables.
+    """
+    colonnes = [
+        colonne
+        for colonne in CATALOGUE_SOURCE.__table__.columns
+        if colonne.key in CATALOGUE_CIBLE.__table__.columns
+    ]
+    df = pd.read_sql(
+        select(*colonnes).order_by(CATALOGUE_SOURCE._source_line), session.connection()
+    )
+
+    if echo:
+        print(f"{CATALOGUE_SOURCE.__table__.fullname} : {len(df)} lignes lues\n")
+
+    df = _standardiser_categorie(df, "plan", PLANS, echo)
+
+    for colonne in CATALOGUE_ENTIERS:
+        valeurs = _numerique(df, colonne)
+        df[colonne] = valeurs.map(
+            lambda valeur: round(valeur) if pd.notna(valeur) else None
+        ).astype(object)
+
+    for colonne in CATALOGUE_DECIMAUX:
+        valeurs = _numerique(df, colonne)
+        df[colonne] = valeurs.map(
+            lambda valeur: float(valeur) if pd.notna(valeur) else None
+        ).astype(object)
+
+    # "Oui" / "Non" -> booleen.
+    supports = _valeurs_normalisees(df, "support_dedie")
+    inconnus = sorted(supports[supports.notna() & ~supports.isin(BOOLEENS)].unique())
+    df["support_dedie"] = supports.map(BOOLEENS).astype(object)
+
+    if echo:
+        _log_action(
+            "typage catalogue",
+            int(supports.notna().sum()),
+            int(df["support_dedie"].notna().sum()),
+            "valeurs",
+        )
+        if inconnus:
+            print(f"WARNING : support_dedie : valeurs non reconnues -> {inconnus}")
+
+    CATALOGUE_CIBLE.__table__.drop(get_engine(), checkfirst=True)
+    Base.metadata.create_all(get_engine())
+
+    rows = df.astype(object).where(pd.notna(df), None).to_dict(orient="records")
+    session.execute(CATALOGUE_CIBLE.__table__.insert(), rows)
+    session.commit()
+
+    inserted = session.scalar(
+        text(
+            f'SELECT count(*) FROM "{SILVER_SCHEMA}"."{CATALOGUE_CIBLE.__tablename__}"'
+        )
+    )
+
+    if echo:
+        print(f"\n{CATALOGUE_CIBLE.__table__.fullname} : {inserted} lignes inserees")
+
+    return inserted
 
 
 def lire_bronze(session: Session, *, echo: bool = True) -> pd.DataFrame:
@@ -720,10 +854,12 @@ def ecrire_silver(session: Session, df: pd.DataFrame, *, echo: bool = True) -> i
     return inserted
 
 
-def ingest_silver(*, echo: bool = True) -> int:
-    """Applique les transformations sur bronze et recharge la table silver."""
-    global _groupe_precedent
-    _groupe_precedent = None
+def ingest_silver(*, echo: bool = True) -> dict[str, int]:
+    """Recharge les tables silver a partir de bronze.
+
+    Retourne le nombre de lignes inserees par table.
+    """
+    _reinitialiser_groupes()
 
     ensure_schema(SILVER_SCHEMA)
     # La table est entierement rechargee a chaque execution : on la recree pour
@@ -732,6 +868,12 @@ def ingest_silver(*, echo: bool = True) -> int:
     Base.metadata.create_all(get_engine())
 
     with get_session() as session:
+        lignes_catalogue = ingerer_catalogue(session, echo=echo)
+
+        if echo:
+            print()
+        _reinitialiser_groupes()
+
         df = lire_bronze(session, echo=echo)
 
         for transformation in TRANSFORMATIONS:
@@ -745,7 +887,10 @@ def ingest_silver(*, echo: bool = True) -> int:
     if echo:
         print(f"\nTOTAL : {inserted} lignes dans {TARGET_MODEL.__table__.fullname}")
 
-    return inserted
+    return {
+        CATALOGUE_CIBLE.__tablename__: lignes_catalogue,
+        TARGET_MODEL.__tablename__: inserted,
+    }
 
 
 app = typer.Typer(help=__doc__)

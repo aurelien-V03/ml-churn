@@ -11,12 +11,43 @@ from datetime import date, datetime
 from decimal import Decimal
 from typing import Any, ClassVar
 
-from sqlalchemy import Date, DateTime, Integer, Numeric, String, Text, func
+from sqlalchemy import (
+    Boolean,
+    Date,
+    DateTime,
+    Integer,
+    Numeric,
+    String,
+    Text,
+    func,
+)
 from sqlalchemy.orm import Mapped, mapped_column
 
 from ml_churn.ingestion.models.base import Base
 
 SILVER_SCHEMA = "silver"
+
+
+class CatalogueSilver(Base):
+    """Catalogue des offres : un plan par ligne.
+
+    `plan` porte le meme code que `ChurnSaasSilver.plan` (STR, PRO, BUS, ENT),
+    ce qui permet de joindre les deux tables.
+    """
+
+    __tablename__ = "catalogue_silver"
+    __table_args__: ClassVar[dict[str, Any]] = {"schema": SILVER_SCHEMA}
+
+    plan: Mapped[str] = mapped_column(String(3), primary_key=True)
+    prix_mensuel_par_siege_eur: Mapped[Decimal | None] = mapped_column(Numeric(8, 2))
+    fonctionnalites_incluses: Mapped[int | None] = mapped_column(Integer)
+    sla_reponse_h: Mapped[int | None] = mapped_column(Integer)
+    quota_stockage_go: Mapped[int | None] = mapped_column(Integer)
+    support_dedie: Mapped[bool | None] = mapped_column(Boolean)
+
+    _transformed_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
 
 
 class ChurnSaasSilver(Base):

@@ -7,13 +7,18 @@ from ml_churn.ingestion.models.bronze import (
     ChurnSaasCompletBronze,
     ChurnSaasEchantillonBronze,
 )
-from ml_churn.ingestion.models.silver import SILVER_SCHEMA, ChurnSaasSilver
+from ml_churn.ingestion.models.silver import (
+    SILVER_SCHEMA,
+    CatalogueSilver,
+    ChurnSaasSilver,
+)
 
 __all__ = [
     "BRONZE_SCHEMA",
     "SILVER_SCHEMA",
     "Base",
     "CatalogueBronze",
+    "CatalogueSilver",
     "ChurnSaasCompletBronze",
     "ChurnSaasEchantillonBronze",
     "ChurnSaasSilver",

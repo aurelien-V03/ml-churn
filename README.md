@@ -53,10 +53,15 @@ Graphiques générés : `src/visualization/graphs`
 
 On utilise uniquement le fichire churn_saas_complet comme source de donnée, churn_saas_echantillon n'est pas inclu car cela provoquerait des doublons.
 
-## Bronze
+## Silver
+
+Les actions ci-dessous sont appliquées dans cet ordre, chacune étant une
+fonction indépendante référencée dans `TRANSFORMATIONS`
+(`src/ml_churn/ingestion/scripts/ingest_silver.py`).
 
 ### 1. Déduplication
-`client_id` ne doit apparaître qu'une fois. 
+
+`client_id` ne doit apparaître qu'une fois : 5035 lignes → 5000.
 
 ### 2. Standardisation
 
@@ -64,6 +69,8 @@ Casse et espaces parasites sont harmonisés avant toute correspondance : le CSV
 contient `TPE`, `" TPE "` et `tpe` pour la même valeur. Une valeur vide reste à
 `NULL` ; une valeur hors table de correspondance déclenche un `WARNING` et est
 mise à `NULL`.
+
+#### Clients (`churn_saas_silver`)
 
 | Colonne | Transformation |
 | --- | --- |
@@ -76,7 +83,40 @@ mise à `NULL`.
 | `couleur_theme_interface` | clair→`C`, vert→`VE`, bleu→`B`, violet→`V`, sombre→`S` |
 | `groupe_experimentation` | A→`A`, B→`B`, control→`C` |
 
-### 3. Règles métier
+#### Catalogue des plans (`catalogue_silver`)
+
+| Colonne | Transformation |
+| --- | --- |
+| `plan` | Pro→`PRO`, Business→`BUS`, Starter→`STR`, Enterprise→`ENT` |
+| `support_dedie` | `Oui` / `Non` → booléen |
+
+Le plan reçoit le même code que dans `churn_saas_silver` : c'est ce qui permet
+de joindre les deux tables (`join silver.catalogue_silver using (plan)`).
+
+### 3. Polarité du commentaire CSM
+
+`commentaire_csm` provient d'une liste fermée de 13 formulations. Une analyse de
+polarité par lexique en dérive la colonne `polarite_csm`, sans toucher au texte
+d'origine : termes négatifs (*insatisfait*, *risque*, *baisse*…), termes positifs
+(*satisfait*, *engagé*, *ambassadeur*) et modificateurs inverseurs (*peu*,
+*faible*, comme dans « compte **peu actif** »). Le signe du score décide.
+
+| Polarité | Termes du lexique |
+| --- | --- |
+| `ALERTE` | `insatisfait`, `mecontentement`, `risque`, `baisse`, `friction`, `limite`, `relance`, `sollicite`, `multiples tickets`, `depart` — ainsi que les modificateurs `peu` et `faible` |
+| `POSITIF` | `satisfait`, `engage`, `ambassadeur`, `actif` — sauf précédés d'un modificateur (« peu actif ») |
+| `NEUTRE` | aucun terme du lexique reconnu |
+| `ABSENT` | pas de commentaire |
+
+Un TF-IDF a été écarté : sur des phrases aussi courtes, il regroupe sur le
+vocabulaire partagé et classe « Client très satisfait » avec « Client
+insatisfait ».
+
+> À confirmer auprès de l'équipe customer : si ces commentaires sont saisis à la
+> résiliation plutôt qu'en amont, la colonne est une fuite de données, au même
+> titre que `sante_compte_fin_periode`.
+
+### 4. Règles métier
 
 Toute ligne violant une règle est **supprimée**. Conventions : une valeur absente
 n'est pas une violation (seules les valeurs présentes et hors bornes sont
@@ -87,18 +127,25 @@ c'est la clé.
 | --- | --- |
 | `client_id` | format `CLI-<chiffres>` |
 | `anciennete_mois` | entre 1 et 36 |
-| `sieges_souscrits` | entre 1 et 898 |
-| `utilisateurs_actifs` | entre 0 et 829, et `<= sieges_souscrits` |
+| `utilisateurs_actifs` | entre 0 et `sieges_souscrits` de la ligne |
 | `taux_adoption_pct` | entre 0 et 100 |
 | `csat` | entre 1 et 5 |
 | `sante_compte_fin_periode` | entre 0 et 100 |
 | `churn` | vaut 0 ou 1 |
-
-### 4.Gestion des outliers
+    
+### 5.Gestion des outliers
 
 L'observation visuelle des graphiques ne denote aucun outliers significatif
 
-### 5.Imputation
+### 6. Typage
+
+Les colonnes texte sont converties vers les types du modèle : `date` pour la
+souscription, `integer` pour 13 colonnes, `numeric` pour les taux, durées et
+montants, `varchar` pour les codes. La lecture numérique tolère les unités du
+CSV (`20.0%`, `3.1 h`, `280.62 €`, `40,0`) : sans cela, environ 1260 valeurs
+valides seraient perdues.
+
+### 7.Imputation
 
 Appliquée après le typage. Médiane pour les colonnes numériques, mode pour les
 catégorielles. La valeur retenue est calculée sur les 5000 lignes et affichée
@@ -114,14 +161,8 @@ dans le log de l'ingestion.
 | `secteur` | mode |
 | `nb_integrations` | médiane |
 | `pays` | mode |
+| `revenu_mensuel_recurrent_eur` | `sieges_souscrits` × `prix_mensuel_par_siege_eur` |
 | `polarite_csm` | modalité explicite |
-
-Les colonnes entières reçoivent une médiane arrondie, pour rester de type
-`integer` en base.
-
-Deux colonnes restent non imputées : `commentaire_csm` (texte libre, la
-polarité dérivée le remplace comme feature) et `revenu_mensuel_recurrent_eur`
-(150 valeurs, soit 3,0 %).
 
 > Les valeurs sont calculées sur l'ensemble du dataset. En cas de découpage
 > train/test ultérieur, elles devront être recalculées sur le train seul pour
