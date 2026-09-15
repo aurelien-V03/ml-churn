@@ -53,11 +53,30 @@ Graphiques générés : `src/visualization/graphs`
 
 On utilise uniquement le fichire churn_saas_complet comme source de donnée, churn_saas_echantillon n'est pas inclu car cela provoquerait des doublons.
 
-## Silver
+## 🥈 Silver
 
-Les actions ci-dessous sont appliquées dans cet ordre, chacune étant une
-fonction indépendante référencée dans `TRANSFORMATIONS`
-(`src/ml_churn/ingestion/scripts/ingest_silver.py`).
+Chaque action est une fonction indépendante référencée dans `TRANSFORMATIONS`
+(`src/ml_churn/ingestion/scripts/ingest_silver.py`) et appliquée dans cet ordre.
+Le catalogue est chargé en amont, ses plans servant à l'imputation du revenu.
+
+| # | Action | Effet |
+| --- | --- | --- |
+| 1 | `dedupliquer_clients` | Un client_id ne doit apparaitre qu'une fois. |
+| 2 | `standardiser_date_souscription` | Ramene les trois formats de date rencontres au seul format AAAA-MM-JJ. |
+| 3 | `standardiser_jour_souscription` | lundi -> L, mardi -> M, mercredi -> ME, jeudi -> J, vendredi -> V, samedi -> S, dimanche -> D. |
+| 4 | `standardiser_secteur` | Tech -> TE, Finance -> FI, Commerce -> CO, Sante -> SA, Industrie -> IN, Public -> PB, Education -> EN. |
+| 5 | `standardiser_pays` | Nom du pays -> code ISO 3166-1 alpha-2 (France -> FR, Allemagne -> DE...). |
+| 6 | `standardiser_taille_entreprise` | Harmonise la casse : tpe / " TPE " -> TPE, idem PME, ETI, GE. |
+| 7 | `standardiser_plan` | Pro -> PRO, Business -> BUS, Starter -> STR, Enterprise -> ENT. |
+| 8 | `standardiser_couleur_theme_interface` | clair -> C, vert -> VE, bleu -> B, violet -> V, sombre -> S. |
+| 9 | `standardiser_groupe_experimentation` | A -> A, B -> B, control -> C. |
+| 10 | `deriver_polarite_csm` | Ajoute `polarite_csm` a partir du commentaire, sans toucher au texte. |
+| 11 | `appliquer_regles_metier` | Supprime les lignes violant une regle metier, colonne par colonne. |
+| 12 | `typer_colonnes` | Convertit les colonnes texte vers les types du modele silver. |
+| 13 | `imputer_revenu_par_catalogue` | Reconstitue le revenu manquant : sieges souscrits x prix du plan. |
+| 14 | `imputer_valeurs_manquantes` | Comble les valeurs manquantes : médiane pour les numériques, mode pour les catégorielles. |
+
+Les sections ci-dessous détaillent chacune de ces étapes.
 
 ### 1. Déduplication
 
@@ -195,7 +214,7 @@ Accès en ligne de commande sans passer par l'interface :
 docker compose exec postgres psql -U mlchurn -d mlchurn
 ```
 
-### Ingestion — couche bronze
+### 🥉 Ingestion — couche bronze
 
 Les CSV de `docs/` sont copiés tels quels dans le schéma `bronze` : **toutes les
 colonnes métier sont en `TEXT`**, aucune conversion ni nettoyage (dates

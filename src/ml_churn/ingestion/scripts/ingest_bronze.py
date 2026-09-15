@@ -19,6 +19,7 @@ from sqlalchemy import func, select, text
 from sqlalchemy.orm import Session
 
 from ml_churn.ingestion.db import PROJECT_ROOT, ensure_schema, get_engine, get_session
+from ml_churn.ingestion.logs import log_total
 from ml_churn.ingestion.models import (
     BRONZE_SCHEMA,
     Base,
@@ -152,10 +153,14 @@ def _print_summary(reports: list[IngestionReport]) -> None:
     inserted_total = sum(report.inserted_rows for report in reports)
     difference = inserted_total - csv_total
 
+    log_total(
+        {
+            f"{BRONZE_SCHEMA}.{report.table_name}": report.inserted_rows
+            for report in reports
+        }
+    )
+
     if difference == 0:
-        print(
-            f"TOTAL : {csv_total} lignes csv, {inserted_total} lignes inserees en base"
-        )
         return
 
     tables_en_ecart = ", ".join(
@@ -169,13 +174,13 @@ def _print_summary(reports: list[IngestionReport]) -> None:
     )
 
 
-def ingest_bronze(*, append: bool = False, echo: bool = True) -> list[IngestionReport]:
+def ingest_bronze(*, append: bool = False, echo: bool = True) -> dict[str, int]:
     """Charge les trois CSV dans le schema bronze.
 
     Par defaut chaque table est videe avant rechargement : relancer l'ingestion
     ne cree pas de doublons. `append` conserve l'existant.
 
-    Retourne un rapport par table (lignes lues, lignes inserees, ecart).
+    Retourne le nombre de lignes inserees par table.
     """
     ensure_schema(BRONZE_SCHEMA)
     Base.metadata.create_all(get_engine())
@@ -185,10 +190,15 @@ def ingest_bronze(*, append: bool = False, echo: bool = True) -> list[IngestionR
             _load(session, source, append=append, echo=echo) for source in SOURCES
         ]
 
+    resultats = {
+        f"{BRONZE_SCHEMA}.{report.table_name}": report.inserted_rows
+        for report in reports
+    }
+
     if echo:
         _print_summary(reports)
 
-    return reports
+    return resultats
 
 
 app = typer.Typer(help=__doc__)

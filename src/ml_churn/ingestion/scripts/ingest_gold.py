@@ -17,6 +17,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from ml_churn.ingestion.db import ensure_schema, get_engine, get_session
+from ml_churn.ingestion.logs import log_total
 from ml_churn.ingestion.models import (
     GOLD_SCHEMA,
     Base,
@@ -80,7 +81,6 @@ def _charger(session: Session, table: TableGold, *, echo: bool) -> int:
                 f"WARNING : {len(rows)} lignes a inserer mais {inserted} en base "
                 f"(ecart de {inserted - len(rows):+d})"
             )
-        print()
 
     return inserted
 
@@ -91,12 +91,15 @@ def ingest_gold(*, echo: bool = True) -> dict[str, int]:
 
     resultats: dict[str, int] = {}
     with get_session() as session:
-        for table in TABLES:
-            resultats[table.cible.__tablename__] = _charger(session, table, echo=echo)
+        for index, table in enumerate(TABLES):
+            if echo and index:
+                print()
+            resultats[table.cible.__table__.fullname] = _charger(
+                session, table, echo=echo
+            )
 
     if echo:
-        detail = ", ".join(f"{nom} : {nombre}" for nom, nombre in resultats.items())
-        print(f"TOTAL : {detail}")
+        log_total(resultats)
 
     return resultats
 

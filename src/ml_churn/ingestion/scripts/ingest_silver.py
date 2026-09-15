@@ -21,6 +21,7 @@ from sqlalchemy import select, text
 from sqlalchemy.orm import Session
 
 from ml_churn.ingestion.db import ensure_schema, get_engine, get_session
+from ml_churn.ingestion.logs import log_total
 from ml_churn.ingestion.models import (
     SILVER_SCHEMA,
     Base,
@@ -884,13 +885,15 @@ def ingest_silver(*, echo: bool = True) -> dict[str, int]:
 
         inserted = ecrire_silver(session, df, echo=echo)
 
-    if echo:
-        print(f"\nTOTAL : {inserted} lignes dans {TARGET_MODEL.__table__.fullname}")
-
-    return {
-        CATALOGUE_CIBLE.__tablename__: lignes_catalogue,
-        TARGET_MODEL.__tablename__: inserted,
+    resultats = {
+        CATALOGUE_CIBLE.__table__.fullname: lignes_catalogue,
+        TARGET_MODEL.__table__.fullname: inserted,
     }
+
+    if echo:
+        log_total(resultats)
+
+    return resultats
 
 
 app = typer.Typer(help=__doc__)
