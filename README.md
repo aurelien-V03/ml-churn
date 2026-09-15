@@ -31,7 +31,45 @@ KPI : % de client qui ont résiliés par taille d'entreprise et formule (chiffre
     stockage telle quelle
     - silver
 
-- déduplication des lignes (en te basant sur client_id), je veux un log qui dise combien de lignes avant déduplication et après
+#### 1. Déduplication
+`client_id` ne doit apparaître qu'une fois. 
+
+#### 2. Standardisation
+
+Casse et espaces parasites sont harmonisés avant toute correspondance : le CSV
+contient `TPE`, `" TPE "` et `tpe` pour la même valeur. Une valeur vide reste à
+`NULL` ; une valeur hors table de correspondance déclenche un `WARNING` et est
+mise à `NULL`.
+
+| Colonne | Transformation |
+| --- | --- |
+| `date_souscription` | `AAAA-MM-JJ`, `JJ/MM/AAAA` et `JJ mois AAAA` → **`AAAA-MM-JJ`** |
+| `jour_souscription` | lundi→`L`, mardi→`M`, mercredi→`ME`, jeudi→`J`, vendredi→`V`, samedi→`S`, dimanche→`D` |
+| `secteur` | Tech→`TE`, Finance→`FI`, Commerce→`CO`, Santé→`SA`, Industrie→`IN`, Public→`PB`, Éducation→`EN` |
+| `pays` | nom → code ISO 3166-1 alpha-2 (`FR`, `ES`, `CA`, `DE`, `CH`, `BE`) |
+| `taille_entreprise` | harmonisation de casse → `TPE`, `PME`, `ETI`, `GE` |
+| `plan` | Pro→`PRO`, Business→`BUS`, Starter→`STR`, Enterprise→`ENT` |
+| `couleur_theme_interface` | clair→`C`, vert→`V`, bleu→`B`, violet→`V`, sombre→`S` |
+| `groupe_experimentation` | A→`A`, B→`B`, control→`C` |
+
+#### 3. Règles métier
+
+Toute ligne violant une règle est **supprimée**. Conventions : une valeur absente
+n'est pas une violation (seules les valeurs présentes et hors bornes sont
+rejetées) ; exception pour `client_id`, où l'absence est une violation puisque
+c'est la clé.
+
+| Colonne | Règle |
+| --- | --- |
+| `client_id` | format `CLI-<chiffres>` |
+| `anciennete_mois` | entre 1 et 36 |
+| `sieges_souscrits` | entre 1 et 898 |
+| `utilisateurs_actifs` | entre 0 et 829, et `<= sieges_souscrits` |
+| `taux_adoption_pct` | entre 0 et 100 |
+| `csat` | entre 1 et 5 |
+| `sante_compte_fin_periode` | entre 0 et 100 |
+| `churn` | vaut 0 ou 1 |
+
 - standardisation des données : 
 date_souscription : il y a plusieurs format dans le fichier AAAA-MM-JJ,
 JJ/MM/AAAA, JJ mois AAAA, je veux un unique format (AAAA-MM-JJ)
