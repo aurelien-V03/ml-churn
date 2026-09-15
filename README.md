@@ -52,6 +52,7 @@ Graphiques générés : `src/visualization/graphs`
 # 2. Ingestion
 
 On utilise uniquement le fichire churn_saas_complet comme source de donnée, churn_saas_echantillon n'est pas inclu car cela provoquerait des doublons.
+Pas besoin d'anonymisation car les données concernent des entreprises.
 
 ## 🥈 Silver
 
