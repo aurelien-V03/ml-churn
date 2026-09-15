@@ -58,6 +58,8 @@ class ChurnSaasSilver(Base):
     code_datacenter: Mapped[str | None] = mapped_column(String(16))
     groupe_experimentation: Mapped[str | None] = mapped_column(String(1))
     commentaire_csm: Mapped[str | None] = mapped_column(Text)
+    # Polarite derivee du commentaire (cf. deriver_polarite_csm).
+    polarite_csm: Mapped[str | None] = mapped_column(String(8))
     sante_compte_fin_periode: Mapped[int | None] = mapped_column(Integer)
     churn: Mapped[int | None] = mapped_column(Integer)
 

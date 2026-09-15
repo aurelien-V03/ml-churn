@@ -10,6 +10,8 @@ Usage :
 
 from __future__ import annotations
 
+import re
+import unicodedata
 from collections.abc import Callable
 from dataclasses import dataclass
 
@@ -127,12 +129,18 @@ def _separer_groupe(groupe: str) -> None:
 
 
 def _log_action(
-    action: str, avant: int, apres: int, unite: str, *, difference: bool = False
+    action: str,
+    avant: int,
+    apres: int,
+    unite: str,
+    *,
+    difference: bool = False,
+    detail: str = "",
 ) -> None:
     """Format commun a toutes les actions : [ACTION] : avant -> apres."""
     _separer_groupe(action.split()[0])
     ecart = f" ({apres - avant})" if difference else ""
-    print(f"[{action.upper()}] : {avant} {unite} -> {apres} {unite}{ecart}")
+    print(f"[{action.upper()}] : {avant} {unite} -> {apres} {unite}{ecart}{detail}")
 
 
 def _valeurs_normalisees(df: pd.DataFrame, colonne: str) -> pd.Series:
@@ -244,6 +252,85 @@ def standardiser_groupe_experimentation(
     return _standardiser_categorie(
         df, "groupe_experimentation", GROUPES_EXPERIMENTATION, echo
     )
+
+
+# --- Analyse de polarite du commentaire CSM -----------------------------
+
+# Les commentaires proviennent d'une liste fermee de formulations courtes.
+# Un TF-IDF sur des phrases aussi breves regroupe sur le vocabulaire partage
+# ("Client satisfait" avec "Client insatisfait") : on passe donc par un
+# lexique de polarite, plus sur sur ce type de corpus.
+TERMES_NEGATIFS: tuple[str, ...] = (
+    "insatisfait",
+    "mecontentement",
+    "risque",
+    "baisse",
+    "friction",
+    "limite",
+    "relance",
+    "sollicite",
+    "multiples tickets",
+    "depart",
+)
+TERMES_POSITIFS: tuple[str, ...] = ("satisfait", "engage", "ambassadeur", "actif")
+
+# Inversent la polarite du terme qui suit : "peu actif", "faible adoption".
+MODIFICATEURS_NEGATIFS: tuple[str, ...] = ("peu", "faible")
+
+# Aucun commentaire n'est une information en soi : modalite a part entiere,
+# distincte de NEUTRE (27.4 % de churn contre 22.0 %).
+POLARITE_ABSENTE = "ABSENT"
+
+
+def _polarite(commentaire: str) -> str:
+    """ALERTE, POSITIF ou NEUTRE selon les termes reperes dans le commentaire."""
+    texte = unicodedata.normalize("NFKD", commentaire.lower())
+    texte = "".join(c for c in texte if not unicodedata.combining(c))
+    mots = texte.split()
+
+    score = sum(terme in texte for terme in TERMES_NEGATIFS)
+    score += sum(modificateur in mots for modificateur in MODIFICATEURS_NEGATIFS)
+    score -= sum(
+        terme in texte
+        and not re.search(
+            rf"(?:{'|'.join(MODIFICATEURS_NEGATIFS)})\s+\w*\s*{terme}", texte
+        )
+        for terme in TERMES_POSITIFS
+    )
+
+    if score > 0:
+        return "ALERTE"
+    if score < 0:
+        return "POSITIF"
+    return "NEUTRE"
+
+
+def deriver_polarite_csm(df: pd.DataFrame, echo: bool = True) -> pd.DataFrame:
+    """Ajoute `polarite_csm` a partir du commentaire, sans toucher au texte.
+
+    La colonne est toujours renseignee : les clients sans commentaire portent
+    la modalite ABSENT.
+    """
+    df = df.copy()
+    commentaires = _valeurs_normalisees(df, "commentaire_csm")
+    df["polarite_csm"] = (
+        commentaires.map(_polarite, na_action="ignore")
+        .fillna(POLARITE_ABSENTE)
+        .astype(object)
+    )
+
+    if echo:
+        repartition = df["polarite_csm"].value_counts()
+        detail = ", ".join(f"{nom} {nombre}" for nom, nombre in repartition.items())
+        _log_action(
+            "derivation polarite_csm",
+            int(commentaires.notna().sum()),
+            int(df["polarite_csm"].notna().sum()),
+            "valeurs",
+            detail=f" ({detail})",
+        )
+
+    return df
 
 
 # --- Regles metier ------------------------------------------------------
@@ -454,6 +541,88 @@ def typer_colonnes(df: pd.DataFrame, echo: bool = True) -> pd.DataFrame:
     return df
 
 
+# --- Imputation ---------------------------------------------------------
+
+# Colonnes dont les valeurs manquantes sont remplacees par la mediane.
+IMPUTATIONS_MEDIANE: tuple[str, ...] = (
+    "delai_reponse_support_h",
+    "csat",
+    "heures_usage_30j",
+    "taux_adoption_pct",
+    "retards_paiement_12m",
+    "nb_integrations",
+)
+
+# Colonnes categorielles : valeurs manquantes remplacees par la modalite la
+# plus frequente.
+IMPUTATIONS_MODE: tuple[str, ...] = ("secteur", "pays")
+
+
+def imputer_valeurs_manquantes(df: pd.DataFrame, echo: bool = True) -> pd.DataFrame:
+    """Comble les valeurs manquantes : mediane pour les numeriques, mode pour
+    les categorielles.
+
+    Mediane et mode sont calcules sur l'ensemble des lignes : si un decoupage
+    train/test intervient plus tard, ils devront etre recalcules sur le train
+    seul pour ne pas y faire fuiter le test.
+    """
+    df = df.copy()
+
+    for colonne in IMPUTATIONS_MEDIANE:
+        valeurs = pd.to_numeric(df[colonne], errors="coerce")
+        avant = int(valeurs.notna().sum())
+        mediane = valeurs.median()
+
+        if pd.isna(mediane):
+            if echo:
+                print(f"WARNING : {colonne} : aucune valeur, imputation impossible")
+            continue
+
+        # Une colonne entiere doit le rester : la mediane peut tomber sur x.5.
+        if colonne in COLONNES_ENTIERES:
+            mediane = round(float(mediane))
+            remplies = valeurs.fillna(mediane).round().astype(int)
+        else:
+            mediane = float(mediane)
+            remplies = valeurs.fillna(mediane).astype(float)
+
+        df[colonne] = remplies.astype(object)
+
+        if echo:
+            _log_action(
+                f"imputation {colonne}",
+                avant,
+                int(remplies.notna().sum()),
+                "valeurs",
+                detail=f" (mediane = {mediane:g})",
+            )
+
+    for colonne in IMPUTATIONS_MODE:
+        valeurs = df[colonne].astype("string")
+        avant = int(valeurs.notna().sum())
+        modes = valeurs.mode()
+
+        if modes.empty:
+            if echo:
+                print(f"WARNING : {colonne} : aucune valeur, imputation impossible")
+            continue
+
+        mode = modes.iloc[0]
+        remplies = valeurs.fillna(mode)
+        df[colonne] = remplies.astype(object)
+
+        if echo:
+            _log_action(
+                f"imputation {colonne}",
+                avant,
+                int(remplies.notna().sum()),
+                "valeurs",
+                detail=f" (mode = {mode})",
+            )
+
+    return df
+
+
 TRANSFORMATIONS: tuple[Transformation, ...] = (
     dedupliquer_clients,
     standardiser_date_souscription,
@@ -464,8 +633,10 @@ TRANSFORMATIONS: tuple[Transformation, ...] = (
     standardiser_plan,
     standardiser_couleur_theme_interface,
     standardiser_groupe_experimentation,
+    deriver_polarite_csm,
     appliquer_regles_metier,
     typer_colonnes,
+    imputer_valeurs_manquantes,
 )
 
 

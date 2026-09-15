@@ -14,7 +14,7 @@
 
 ### Objectifs
 
-Estimer la probabilité de churn d'un client
+Estimer la probabilité de churn d'un client (résiliation à l'échéance)
 
 livrable :
 - modele de classification (cible principal) : le client resilie ou ne resilie pas à l'échéance
@@ -50,6 +50,8 @@ Graphiques générés : `src/visualization/graphs`
 | `sante_compte_fin_periode` | asymétrique |
 
 # 2. Ingestion
+
+On utilise uniquement le fichire churn_saas_complet comme source de donnée, churn_saas_echantillon n'est pas inclu car cela provoquerait des doublons.
 
 ## Bronze
 
@@ -94,14 +96,41 @@ c'est la clé.
 
 ### 4.Gestion des outliers
 
-L'observation visuelle des graphiques ne denote aucun outliers significatif, je vais
+L'observation visuelle des graphiques ne denote aucun outliers significatif
+
 ### 5.Imputation
 
+Appliquée après le typage. Médiane pour les colonnes numériques, mode pour les
+catégorielles. La valeur retenue est calculée sur les 5000 lignes et affichée
+dans le log de l'ingestion.
+
+| Colonne | Méthode |
+| --- | --- |
+| `delai_reponse_support_h` | médiane |
+| `csat` | médiane |
+| `heures_usage_30j` | médiane |
+| `taux_adoption_pct` | médiane |
+| `retards_paiement_12m` | médiane |
+| `secteur` | mode |
+| `nb_integrations` | médiane |
+| `pays` | mode |
+| `polarite_csm` | modalité explicite |
+
+Les colonnes entières reçoivent une médiane arrondie, pour rester de type
+`integer` en base.
+
+Deux colonnes restent non imputées : `commentaire_csm` (texte libre, la
+polarité dérivée le remplace comme feature) et `revenu_mensuel_recurrent_eur`
+(150 valeurs, soit 3,0 %).
+
+> Les valeurs sont calculées sur l'ensemble du dataset. En cas de découpage
+> train/test ultérieur, elles devront être recalculées sur le train seul pour
+> ne pas y faire fuiter le test.
 
 ### Base de données
 
 PostgreSQL via Docker Compose (`docker-compose.yml`) :
-
+On utilise le robust z-score
 ```bash
 cp .env.example .env
 docker compose up -d
