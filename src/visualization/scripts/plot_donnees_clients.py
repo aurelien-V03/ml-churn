@@ -75,12 +75,14 @@ CHARTS: tuple[ChartSpec, ...] = (
         title="Nombre de clients par taille d'entreprise",
         xlabel="Taille d'entreprise",
         display=str.upper,
+        order=("tpe", "pme", "eti", "ge"),
     ),
     ChartSpec(
         column="plan",
         title="Nombre de clients par plan",
         xlabel="Plan",
         display=str.capitalize,
+        order=("starter", "pro", "business", "enterprise"),
     ),
 )
 
@@ -119,6 +121,48 @@ INTEGRATIONS_SPEC = ChartSpec(
     column="nb_integrations",
     title="Nombre de clients par nombre d'integrations",
     xlabel="Nombre d'integrations",
+)
+
+SIEGES_SPEC = ChartSpec(
+    column="sieges_souscrits",
+    title="Nombre de clients par nombre de sieges souscrits",
+    xlabel="Sieges souscrits",
+)
+
+UTILISATEURS_ACTIFS_SPEC = ChartSpec(
+    column="utilisateurs_actifs",
+    title="Nombre de clients par nombre d'utilisateurs actifs",
+    xlabel="Utilisateurs actifs",
+)
+
+ADOPTION_SPEC = ChartSpec(
+    column="taux_adoption_pct",
+    title="Nombre de clients par taux d'adoption",
+    xlabel="Taux d'adoption (%) = utilisateurs actifs / sieges souscrits",
+)
+
+CONNEXIONS_SPEC = ChartSpec(
+    column="connexions_30j",
+    title="Nombre de clients par nombre de connexions sur 30 jours",
+    xlabel="Connexions (30 jours)",
+)
+
+DERNIERE_CONNEXION_SPEC = ChartSpec(
+    column="derniere_connexion_jours",
+    title="Nombre de clients par anciennete de la derniere connexion",
+    xlabel="Jours depuis la derniere connexion",
+)
+
+TICKETS_SPEC = ChartSpec(
+    column="tickets_support_90j",
+    title="Nombre de clients par nombre de tickets support (90 jours)",
+    xlabel="Tickets support (90 jours)",
+)
+
+SANTE_COMPTE_SPEC = ChartSpec(
+    column="sante_compte_fin_periode",
+    title="Nombre de clients par score de sante du compte",
+    xlabel="Sante du compte en fin de periode (0 a 100)",
 )
 
 CSAT_SPEC = ChartSpec(
@@ -177,12 +221,30 @@ def _date_souscription_counts(df: pd.DataFrame) -> pd.Series:
 
 
 def _valeurs_numeriques(df: pd.DataFrame, spec: ChartSpec) -> pd.Series:
+    return _colonne_numerique(df, spec.column)
+
+
+def _colonne_numerique(df: pd.DataFrame, colonne: str) -> pd.Series:
     """Le CSV melange virgule decimale et unites ("3.1 h", "280.62 €", "40,0")."""
-    brut = df[spec.column].astype("string").str.strip()
+    brut = df[colonne].astype("string").str.strip()
     nettoye = brut.str.replace(r"[^0-9,.+-]", "", regex=True)
     return pd.to_numeric(
         nettoye.str.replace(",", ".", regex=False), errors="coerce"
     ).dropna()
+
+
+def _taux_adoption_counts(df: pd.DataFrame) -> pd.Series:
+    """Taux recalcule plutot que lu dans le CSV.
+
+    La colonne `taux_adoption_pct` est vide sur 250 lignes alors que le rapport
+    est toujours calculable ; sur les lignes ou les deux existent, l'ecart est
+    inferieur a 0.1 point. Arrondi a l'entier : le rapport brut donnerait des
+    centaines de valeurs distinctes.
+    """
+    actifs = _colonne_numerique(df, "utilisateurs_actifs")
+    sieges = _colonne_numerique(df, "sieges_souscrits")
+    taux = (actifs / sieges * 100).where(sieges > 0)
+    return taux.dropna().round().astype(int).value_counts().sort_index()
 
 
 def _counts_numeriques(df: pd.DataFrame, spec: ChartSpec) -> pd.Series:
@@ -227,6 +289,26 @@ def _exporter(figure: plt.Figure, spec: ChartSpec, *, show: bool) -> Path:
     return output_path
 
 
+def _render_barres_numeriques(
+    counts: pd.Series, spec: ChartSpec, *, show: bool
+) -> Path:
+    """Comptage par valeur sur un axe numerique.
+
+    Comme pour un barplot classique, y est le nombre de clients ayant cette
+    valeur exacte -- mais l'axe x reste numerique, seule facon de rester lisible
+    quand la variable prend des centaines de valeurs distinctes.
+    """
+    figure, axes = plt.subplots(figsize=(10, 5))
+    axes.bar(counts.index.to_numpy(), counts.to_numpy(), width=1.0, color="#4c72b0")
+    axes.set_title(spec.title)
+    axes.set_xlabel(spec.xlabel)
+    axes.set_ylabel("Nombre de clients")
+    axes.spines[["top", "right"]].set_visible(False)
+    axes.grid(axis="y", alpha=0.3)
+
+    return _exporter(figure, spec, show=show)
+
+
 def _render_histogramme(valeurs: pd.Series, spec: ChartSpec, *, show: bool) -> Path:
     """Variable continue : un histogramme, pas une barre par valeur distincte."""
     figure, axes = plt.subplots(figsize=(10, 5))
@@ -259,8 +341,23 @@ def plot_donnees_clients(*, show: bool = True, echo: bool = True) -> list[Path]:
         _render(_counts_numeriques(df, ANCIENNETE_SPEC), ANCIENNETE_SPEC, show=show)
     )
     paths.append(_render(_counts_numeriques(df, CSAT_SPEC), CSAT_SPEC, show=show))
-    for spec in (RETARDS_SPEC, INTEGRATIONS_SPEC):
+    for spec in (RETARDS_SPEC, INTEGRATIONS_SPEC, TICKETS_SPEC):
         paths.append(_render(_counts_numeriques(df, spec), spec, show=show))
+
+    for spec in (
+        SIEGES_SPEC,
+        UTILISATEURS_ACTIFS_SPEC,
+        CONNEXIONS_SPEC,
+        DERNIERE_CONNEXION_SPEC,
+        SANTE_COMPTE_SPEC,
+    ):
+        paths.append(
+            _render_barres_numeriques(_counts_numeriques(df, spec), spec, show=show)
+        )
+
+    paths.append(
+        _render_barres_numeriques(_taux_adoption_counts(df), ADOPTION_SPEC, show=show)
+    )
 
     for spec in (DELAI_SPEC, HEURES_USAGE_SPEC, REVENU_SPEC):
         paths.append(

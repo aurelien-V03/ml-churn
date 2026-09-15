@@ -28,8 +28,26 @@ KPI : % de client qui ont résiliés par taille d'entreprise et formule (chiffre
 
 # 1. Visualisation des données sous forme graphique
 
-scripts de génération des scripts : src/visualization/scripts
-graphiques générés : src/visualization/
+Scripts de génération : `src/visualization/scripts`
+Graphiques générés : `src/visualization/graphs`
+
+| Colonne | Distribution |
+| --- | --- |
+| `date_souscription` | asymétrique |
+| `jour_souscription` | normale |
+| `anciennete_mois` | asymétrique |
+| `sieges_souscrits` | asymétrique |
+| `utilisateurs_actifs` | asymétrique |
+| `taux_adoption_pct` | asymétrique |
+| `connexions_30j` | asymétrique |
+| `heures_usage_30j` | asymétrique |
+| `nb_integrations` | asymétrique |
+| `derniere_connexion_jours` | asymétrique |
+| `tickets_support_90j` | asymétrique |
+| `delai_reponse_support_h` | asymétrique |
+| `csat` | asymétrique |
+| `retards_paiement_12m` | asymétrique |
+| `sante_compte_fin_periode` | asymétrique |
 
 # 2. Ingestion
 
@@ -76,6 +94,7 @@ c'est la clé.
 
 ### 4.Gestion des outliers
 
+L'observation visuelle des graphiques ne denote aucun outliers significatif, je vais
 ### 5.Imputation
 
 
