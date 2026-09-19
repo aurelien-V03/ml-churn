@@ -22,7 +22,20 @@ livrable :
 
 ### Cadrage
 
-KPI : % de client qui ont résiliés par taille d'entreprise et formule (chiffre à minimiser le plus possible)
+KPI métier :
+
+Churn
+- Taux de churn : clients ayant résiliés / clients total (définir un niveau auquel il ne faut pas passer en dessous)
+- Nombre de client sauvés : nombre de client qui souhaités résilier leur abonnement mais ont changés d'avis
+
+-> l'objectif est de garder un maximum de client
+
+Valeur vie client
+- Ecart estimation CLV - CLV a un instant T 
+
+-> l'objectif est de rapprocher ces valeurs pour maximiser le chiffre d'affaire
+
+
 
 ### Etapes
 
