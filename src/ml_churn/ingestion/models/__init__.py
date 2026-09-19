@@ -9,8 +9,10 @@ from ml_churn.ingestion.models.bronze import (
 )
 from ml_churn.ingestion.models.gold import (
     GOLD_SCHEMA,
+    MODALITES_ONE_HOT,
     CatalogueGold,
     ChurnSaasGold,
+    nom_colonne_one_hot,
 )
 from ml_churn.ingestion.models.silver import (
     SILVER_SCHEMA,
@@ -21,6 +23,7 @@ from ml_churn.ingestion.models.silver import (
 __all__ = [
     "BRONZE_SCHEMA",
     "GOLD_SCHEMA",
+    "MODALITES_ONE_HOT",
     "SILVER_SCHEMA",
     "Base",
     "CatalogueBronze",
@@ -30,4 +33,5 @@ __all__ = [
     "ChurnSaasEchantillonBronze",
     "ChurnSaasGold",
     "ChurnSaasSilver",
+    "nom_colonne_one_hot",
 ]

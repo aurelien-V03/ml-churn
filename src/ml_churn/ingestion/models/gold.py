@@ -7,6 +7,7 @@ entrainer l'autre.
 
 from __future__ import annotations
 
+import re
 from datetime import date, datetime
 from decimal import Decimal
 from typing import Any, ClassVar
@@ -17,6 +18,29 @@ from sqlalchemy.orm import Mapped, mapped_column
 from ml_churn.ingestion.models.base import Base
 
 GOLD_SCHEMA = "gold"
+
+
+def nom_colonne_one_hot(colonne: str, modalite: str) -> str:
+    """Convention de nommage : [nom_categorie]_valeur.
+
+    La modalite est ramenee a un identifiant SQL valide : minuscules, et tout
+    caractere non alphanumerique remplace par un underscore ("eu-w1" ->
+    "eu_w1").
+    """
+    return f"{colonne}_{re.sub(r'[^0-9a-z]+', '_', modalite.lower())}"
+
+
+# Modalites encodees en one-hot, dans l'ordre des colonnes generees.
+MODALITES_ONE_HOT: dict[str, tuple[str, ...]] = {
+    "jour_souscription": ("L", "M", "ME", "J", "V", "S", "D"),
+    "secteur": ("TE", "FI", "CO", "SA", "IN", "PB", "EN"),
+    "pays": ("FR", "ES", "CA", "DE", "CH", "BE"),
+    "taille_entreprise": ("TPE", "PME", "ETI", "GE"),
+    "plan": ("STR", "PRO", "BUS", "ENT"),
+    "couleur_theme_interface": ("C", "VE", "B", "V", "S"),
+    "code_datacenter": ("eu-w1", "eu-w3", "us-e1", "ap-s1"),
+    "groupe_experimentation": ("A", "B", "C"),
+}
 
 
 class CatalogueGold(Base):
@@ -84,6 +108,56 @@ class ChurnSaasGold(Base):
     polarite_csm: Mapped[str | None] = mapped_column(String(8))
     sante_compte_fin_periode: Mapped[int | None] = mapped_column(Integer)
     churn: Mapped[int | None] = mapped_column(Integer)
+
+    # --- Encodage one-hot des colonnes categorielles ---
+    # jour_souscription
+    jour_souscription_l: Mapped[int | None] = mapped_column(Integer)
+    jour_souscription_m: Mapped[int | None] = mapped_column(Integer)
+    jour_souscription_me: Mapped[int | None] = mapped_column(Integer)
+    jour_souscription_j: Mapped[int | None] = mapped_column(Integer)
+    jour_souscription_v: Mapped[int | None] = mapped_column(Integer)
+    jour_souscription_s: Mapped[int | None] = mapped_column(Integer)
+    jour_souscription_d: Mapped[int | None] = mapped_column(Integer)
+    # secteur
+    secteur_te: Mapped[int | None] = mapped_column(Integer)
+    secteur_fi: Mapped[int | None] = mapped_column(Integer)
+    secteur_co: Mapped[int | None] = mapped_column(Integer)
+    secteur_sa: Mapped[int | None] = mapped_column(Integer)
+    secteur_in: Mapped[int | None] = mapped_column(Integer)
+    secteur_pb: Mapped[int | None] = mapped_column(Integer)
+    secteur_en: Mapped[int | None] = mapped_column(Integer)
+    # pays
+    pays_fr: Mapped[int | None] = mapped_column(Integer)
+    pays_es: Mapped[int | None] = mapped_column(Integer)
+    pays_ca: Mapped[int | None] = mapped_column(Integer)
+    pays_de: Mapped[int | None] = mapped_column(Integer)
+    pays_ch: Mapped[int | None] = mapped_column(Integer)
+    pays_be: Mapped[int | None] = mapped_column(Integer)
+    # taille_entreprise
+    taille_entreprise_tpe: Mapped[int | None] = mapped_column(Integer)
+    taille_entreprise_pme: Mapped[int | None] = mapped_column(Integer)
+    taille_entreprise_eti: Mapped[int | None] = mapped_column(Integer)
+    taille_entreprise_ge: Mapped[int | None] = mapped_column(Integer)
+    # plan
+    plan_str: Mapped[int | None] = mapped_column(Integer)
+    plan_pro: Mapped[int | None] = mapped_column(Integer)
+    plan_bus: Mapped[int | None] = mapped_column(Integer)
+    plan_ent: Mapped[int | None] = mapped_column(Integer)
+    # couleur_theme_interface
+    couleur_theme_interface_c: Mapped[int | None] = mapped_column(Integer)
+    couleur_theme_interface_ve: Mapped[int | None] = mapped_column(Integer)
+    couleur_theme_interface_b: Mapped[int | None] = mapped_column(Integer)
+    couleur_theme_interface_v: Mapped[int | None] = mapped_column(Integer)
+    couleur_theme_interface_s: Mapped[int | None] = mapped_column(Integer)
+    # code_datacenter
+    code_datacenter_eu_w1: Mapped[int | None] = mapped_column(Integer)
+    code_datacenter_eu_w3: Mapped[int | None] = mapped_column(Integer)
+    code_datacenter_us_e1: Mapped[int | None] = mapped_column(Integer)
+    code_datacenter_ap_s1: Mapped[int | None] = mapped_column(Integer)
+    # groupe_experimentation
+    groupe_experimentation_a: Mapped[int | None] = mapped_column(Integer)
+    groupe_experimentation_b: Mapped[int | None] = mapped_column(Integer)
+    groupe_experimentation_c: Mapped[int | None] = mapped_column(Integer)
 
     _transformed_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()

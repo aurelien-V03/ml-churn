@@ -34,7 +34,7 @@ Valeur vie client
 - Ecart estimation CLV - CLV a un instant T 
 
 -> l'objectif est de rapprocher ces valeurs pour maximiser le chiffre d'affaire
-
+git sta
 
 ### Etapes
 
