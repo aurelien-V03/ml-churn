@@ -36,7 +36,6 @@ Valeur vie client
 -> l'objectif est de rapprocher ces valeurs pour maximiser le chiffre d'affaire
 
 
-
 ### Etapes
 
 # 1. Visualisation des données sous forme graphique
