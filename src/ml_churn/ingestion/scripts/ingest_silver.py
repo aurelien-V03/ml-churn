@@ -468,7 +468,6 @@ COLONNES_ENTIERES: tuple[str, ...] = (
     "sieges_souscrits",
     "utilisateurs_actifs",
     "connexions_30j",
-    "fonctionnalites_total",
     "fonctionnalites_utilisees",
     "nb_integrations",
     "derniere_connexion_jours",

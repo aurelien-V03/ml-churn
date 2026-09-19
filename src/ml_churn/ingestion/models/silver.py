@@ -63,7 +63,6 @@ class ChurnSaasSilver(Base):
     taux_adoption_pct: Mapped[Decimal | None] = mapped_column(Numeric(5, 2))
     connexions_30j: Mapped[int | None] = mapped_column(Integer)
     heures_usage_30j: Mapped[Decimal | None] = mapped_column(Numeric(7, 2))
-    fonctionnalites_total: Mapped[int | None] = mapped_column(Integer)
     fonctionnalites_utilisees: Mapped[int | None] = mapped_column(Integer)
     nb_integrations: Mapped[int | None] = mapped_column(Integer)
     derniere_connexion_jours: Mapped[int | None] = mapped_column(Integer)

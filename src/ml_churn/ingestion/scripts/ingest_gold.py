@@ -90,9 +90,11 @@ def ajouter_colonnes_derivees(df: pd.DataFrame, echo: bool = True) -> pd.DataFra
     # Utilisation rapportee au plan : 3 fonctionnalites sur 8 (Starter) et sur
     # 40 (Enterprise) ne decrivent pas le meme niveau d'adoption.
     utilisees = pd.to_numeric(df["fonctionnalites_utilisees"], errors="coerce")
-    total = pd.to_numeric(df["fonctionnalites_total"], errors="coerce").replace(
-        0, pd.NA
-    )
+    fonctionnalites_par_plan = pd.read_sql(
+        select(CatalogueGold.plan, CatalogueGold.fonctionnalites_incluses),
+        get_engine(),
+    ).set_index("plan")["fonctionnalites_incluses"]
+    total = df["plan"].map(fonctionnalites_par_plan.astype(float)).replace(0, pd.NA)
     taux = (utilisees / total).astype(float).round(2)
     df["taux_fonctionnalites"] = taux.map(
         lambda valeur: float(valeur) if pd.notna(valeur) else None
