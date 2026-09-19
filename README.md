@@ -93,7 +93,7 @@ Les sections ci-dessous détaillent chacune de ces étapes.
 
 ### 1. Déduplication
 
-`client_id` ne doit apparaître qu'une fois : 5035 lignes → 5000.
+`client_id` ne doit apparaître qu'une fois.
 
 ### 2. Standardisation
 
@@ -174,14 +174,14 @@ L'observation visuelle des graphiques ne denote aucun outliers significatif
 Les colonnes texte sont converties vers les types du modèle : `date` pour la
 souscription, `integer` pour 13 colonnes, `numeric` pour les taux, durées et
 montants, `varchar` pour les codes. La lecture numérique tolère les unités du
-CSV (`20.0%`, `3.1 h`, `280.62 €`, `40,0`) : sans cela, environ 1260 valeurs
-valides seraient perdues.
+CSV (`20.0%`, `3.1 h`, `280.62 €`, `40,0`) : sans cela, des valeurs valides
+seraient perdues.
 
 ### 7.Imputation
 
 Appliquée après le typage. Médiane pour les colonnes numériques, mode pour les
-catégorielles. La valeur retenue est calculée sur les 5000 lignes et affichée
-dans le log de l'ingestion.
+catégorielles. La valeur retenue est calculée sur l'ensemble des lignes et
+affichée dans le log de l'ingestion.
 
 | Colonne | Méthode |
 | --- | --- |
@@ -199,6 +199,68 @@ dans le log de l'ingestion.
 > Les valeurs sont calculées sur l'ensemble du dataset. En cas de découpage
 > train/test ultérieur, elles devront être recalculées sur le train seul pour
 > ne pas y faire fuiter le test.
+
+## 🥇 Gold
+
+`silver` → `gold`, pour les deux tables : `catalogue_gold` et `churn_saas_gold`.
+La structure de silver est reprise, complétée par des colonnes calculées
+destinées à la modélisation. Seule exception : `commentaire_csm` n'est pas
+repris, `polarite_csm` le résume. La couche est entièrement rechargée à chaque
+exécution.
+
+```bash
+uv run python -m ml_churn.ingestion.scripts.ingest_gold
+```
+
+Comme en silver, chaque action est une fonction indépendante, listée dans les
+`transformations` de la table concernée
+(`src/ml_churn/ingestion/scripts/ingest_gold.py`) :
+
+| # | Action | Effet |
+| --- | --- | --- |
+| 1 | `ajouter_colonnes_derivees` | Calcule les 4 colonnes ci-dessous |
+| 2 | `encoder_categorielles` | Encode les colonnes catégorielles en one-hot |
+
+### 1. Colonnes dérivées
+
+| Colonne | Calcul | Intérêt |
+| --- | --- | --- |
+| `inactivite_relative` | `derniere_connexion_jours / (anciennete_mois × 30)` | 15 jours sans connexion ne pèsent pas pareil à 1 mois et à 3 ans d'ancienneté |
+| `inactif_30j` | `derniere_connexion_jours >= 30` | Isole les comptes dormants, dont le risque de résiliation est nettement plus élevé |
+| `taux_fonctionnalites` | `fonctionnalites_utilisees / fonctionnalites_total` | Normalise par le plan : 3 fonctionnalités sur 8 (Starter) ou sur 40 (Enterprise) ne décrivent pas la même adoption |
+| `niveau_anciennete` | tranches d'`anciennete_mois` | Segmentation du cycle de vie, encodée en one-hot |
+
+Les seuils sont des constantes en tête du script (`SEUIL_INACTIVITE_JOURS`,
+`NIVEAUX_ANCIENNETE`).
+
+Découpage retenu pour `niveau_anciennete` — les bornes suivent le cycle
+contractuel (fin d'onboarding, premier renouvellement annuel) :
+
+| Niveau | Ancienneté |
+| --- | --- |
+| `RECENT` | 1 à 3 mois |
+| `ETABLI` | 4 à 12 mois |
+| `ANCIEN` | 13 mois et plus |
+
+### 2. Encodage one-hot
+
+Neuf colonnes catégorielles donnent **43 colonnes binaires** (`0` / `1`), selon
+la convention `[nom_colonne]_valeur` : `pays_fr`, `plan_str`,
+`niveau_anciennete_recent`…
+
+`jour_souscription`, `secteur`, `pays`, `taille_entreprise`, `plan`,
+`couleur_theme_interface`, `code_datacenter`, `groupe_experimentation`,
+`niveau_anciennete`.
+
+Deux règles de nommage : minuscules, et tout caractère non alphanumérique
+remplacé par `_` (`eu-w1` → `code_datacenter_eu_w1`), pour obtenir des
+identifiants SQL utilisables sans guillemets. Les colonnes d'origine sont
+conservées à côté de leur encodage.
+
+Les modalités sont déclarées dans `MODALITES_ONE_HOT`
+(`src/ml_churn/ingestion/models/gold.py`) et non déduites des données : le
+schéma de la table reste ainsi stable quel que soit le contenu du lot chargé, et
+toute modalité inattendue déclenche un `WARNING` au lieu de casser l'insertion.
 
 ### Base de données
 

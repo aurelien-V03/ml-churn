@@ -716,7 +716,7 @@ def _log_donnees_manquantes(df: pd.DataFrame) -> None:
 
     print()
     print(
-        f"[DONNEES MANQUANTES] : {total / cellules:.1%} des valeurs "
+        f"[DONNEES MANQUANTES] : {total / cellules:.2%} des valeurs "
         f"({total} / {cellules})"
     )
 
@@ -725,7 +725,7 @@ def _log_donnees_manquantes(df: pd.DataFrame) -> None:
     for colonne, nombre in manquantes.sort_values(
         ascending=False, kind="stable"
     ).items():
-        print(f"  {colonne:<{largeur}} : {int(nombre) / len(df):>5.1%} ({int(nombre)})")
+        print(f"  {colonne:<{largeur}} : {int(nombre) / len(df):>7.2%} ({int(nombre)})")
 
 
 # --- Catalogue des plans ------------------------------------------------

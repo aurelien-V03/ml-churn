@@ -34,6 +34,17 @@ BATCH_SIZE = 1_000
 
 Transformation = Callable[[pd.DataFrame, bool], pd.DataFrame]
 
+# Au-dela de ce nombre de jours sans connexion, le compte est considere inactif.
+SEUIL_INACTIVITE_JOURS = 30
+
+# Bornes hautes des niveaux d'anciennete, en mois : onboarding, premiere annee,
+# puis au-dela du premier renouvellement.
+NIVEAUX_ANCIENNETE: tuple[tuple[float, str], ...] = (
+    (3, "RECENT"),
+    (12, "ETABLI"),
+    (float("inf"), "ANCIEN"),
+)
+
 
 @dataclass(frozen=True)
 class TableGold:
@@ -56,6 +67,54 @@ class TableGold:
             if not colonne.key.startswith("_")
             and colonne.key in self.source.__table__.columns
         ]
+
+
+def ajouter_colonnes_derivees(df: pd.DataFrame, echo: bool = True) -> pd.DataFrame:
+    """Ajoute les colonnes calculees a partir des colonnes existantes.
+
+    `niveau_anciennete` est encodee en one-hot par l'action suivante, au meme
+    titre que les autres colonnes categorielles.
+    """
+    df = df.copy()
+    anciennete = pd.to_numeric(df["anciennete_mois"], errors="coerce")
+    derniere_connexion = pd.to_numeric(df["derniere_connexion_jours"], errors="coerce")
+
+    jours_de_vie = (anciennete * 30).replace(0, pd.NA)
+    inactivite = (derniere_connexion / jours_de_vie).astype(float).round(2)
+    df["inactivite_relative"] = inactivite.map(
+        lambda valeur: float(valeur) if pd.notna(valeur) else None
+    ).astype(object)
+
+    df["inactif_30j"] = (derniere_connexion >= SEUIL_INACTIVITE_JOURS).astype(int)
+
+    # Utilisation rapportee au plan : 3 fonctionnalites sur 8 (Starter) et sur
+    # 40 (Enterprise) ne decrivent pas le meme niveau d'adoption.
+    utilisees = pd.to_numeric(df["fonctionnalites_utilisees"], errors="coerce")
+    total = pd.to_numeric(df["fonctionnalites_total"], errors="coerce").replace(
+        0, pd.NA
+    )
+    taux = (utilisees / total).astype(float).round(2)
+    df["taux_fonctionnalites"] = taux.map(
+        lambda valeur: float(valeur) if pd.notna(valeur) else None
+    ).astype(object)
+
+    bornes = [0.0, *(borne for borne, _ in NIVEAUX_ANCIENNETE)]
+    df["niveau_anciennete"] = pd.cut(
+        anciennete,
+        bins=bornes,
+        labels=[libelle for _, libelle in NIVEAUX_ANCIENNETE],
+    ).astype(object)
+
+    if echo:
+        repartition = df["niveau_anciennete"].value_counts()
+        detail = ", ".join(f"{nom} {nombre}" for nom, nombre in repartition.items())
+        print(
+            f"colonnes derivees : inactivite_relative, taux_fonctionnalites, "
+            f"inactif_30j ({int(df['inactif_30j'].sum())} clients), "
+            f"niveau_anciennete ({detail})"
+        )
+
+    return df
 
 
 def encoder_categorielles(df: pd.DataFrame, echo: bool = True) -> pd.DataFrame:
@@ -97,7 +156,7 @@ TABLES: tuple[TableGold, ...] = (
     TableGold(
         ChurnSaasSilver,
         ChurnSaasGold,
-        transformations=(encoder_categorielles,),
+        transformations=(ajouter_colonnes_derivees, encoder_categorielles),
     ),
 )
 

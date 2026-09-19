@@ -1,8 +1,10 @@
 """Couche gold : donnees pretes a l'usage, exposees aux consommateurs.
 
 Les tables reprennent la structure de silver (memes colonnes, memes types),
-mais les definitions sont independantes : chaque couche peut evoluer sans
-entrainer l'autre.
+completee par les colonnes calculees pour la modelisation. Les definitions sont
+independantes : chaque couche peut evoluer sans entrainer l'autre.
+
+`commentaire_csm` n'est volontairement pas repris : `polarite_csm` le resume.
 """
 
 from __future__ import annotations
@@ -12,7 +14,7 @@ from datetime import date, datetime
 from decimal import Decimal
 from typing import Any, ClassVar
 
-from sqlalchemy import Boolean, Date, DateTime, Integer, Numeric, String, Text, func
+from sqlalchemy import Boolean, Date, DateTime, Integer, Numeric, String, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from ml_churn.ingestion.models.base import Base
@@ -40,6 +42,8 @@ MODALITES_ONE_HOT: dict[str, tuple[str, ...]] = {
     "couleur_theme_interface": ("C", "VE", "B", "V", "S"),
     "code_datacenter": ("eu-w1", "eu-w3", "us-e1", "ap-s1"),
     "groupe_experimentation": ("A", "B", "C"),
+    # Colonne derivee (cf. ajouter_colonnes_derivees).
+    "niveau_anciennete": ("RECENT", "ETABLI", "ANCIEN"),
 }
 
 
@@ -103,11 +107,19 @@ class ChurnSaasGold(Base):
     couleur_theme_interface: Mapped[str | None] = mapped_column(String(2))
     code_datacenter: Mapped[str | None] = mapped_column(String(16))
     groupe_experimentation: Mapped[str | None] = mapped_column(String(1))
-    commentaire_csm: Mapped[str | None] = mapped_column(Text)
-    # Polarite derivee du commentaire (cf. deriver_polarite_csm).
+    # Le commentaire brut n'est pas repris en gold : seule sa polarite l'est.
     polarite_csm: Mapped[str | None] = mapped_column(String(8))
     sante_compte_fin_periode: Mapped[int | None] = mapped_column(Integer)
     churn: Mapped[int | None] = mapped_column(Integer)
+
+    # --- Colonnes derivees ---
+    # Latence de connexion rapportee a la duree de vie du compte : 15 jours
+    # sans connexion ne pesent pas pareil a 1 mois et a 3 ans d'anciennete.
+    inactivite_relative: Mapped[Decimal | None] = mapped_column(Numeric(10, 2))
+    inactif_30j: Mapped[int | None] = mapped_column(Integer)
+    # Part des fonctionnalites du plan reellement utilisees (0 a 1).
+    taux_fonctionnalites: Mapped[Decimal | None] = mapped_column(Numeric(5, 2))
+    niveau_anciennete: Mapped[str | None] = mapped_column(String(8))
 
     # --- Encodage one-hot des colonnes categorielles ---
     # jour_souscription
@@ -158,6 +170,10 @@ class ChurnSaasGold(Base):
     groupe_experimentation_a: Mapped[int | None] = mapped_column(Integer)
     groupe_experimentation_b: Mapped[int | None] = mapped_column(Integer)
     groupe_experimentation_c: Mapped[int | None] = mapped_column(Integer)
+    # niveau_anciennete
+    niveau_anciennete_recent: Mapped[int | None] = mapped_column(Integer)
+    niveau_anciennete_etabli: Mapped[int | None] = mapped_column(Integer)
+    niveau_anciennete_ancien: Mapped[int | None] = mapped_column(Integer)
 
     _transformed_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
