@@ -675,6 +675,73 @@ def imputer_valeurs_manquantes(df: pd.DataFrame, echo: bool = True) -> pd.DataFr
     return df
 
 
+# --- Analyse des valeurs extremes ---------------------------------------
+
+# Critere usuel du boxplot : au-dela de 1.5 x IQR de part et d'autre des
+# quartiles, la valeur est consideree extreme.
+FACTEUR_IQR = 1.5
+
+
+def analyser_outliers_iqr(df: pd.DataFrame, echo: bool = True) -> pd.DataFrame:
+    """Signale les valeurs extremes de chaque colonne numerique.
+
+    Action de diagnostic : elle ne modifie ni ne supprime aucune ligne. Les
+    bornes sont Q1 - 1.5 x IQR et Q3 + 1.5 x IQR.
+    """
+    if not echo:
+        return df
+
+    colonnes = (*COLONNES_ENTIERES, *COLONNES_DECIMALES)
+    lignes: list[tuple[str, int, float, str, str]] = []
+    total = 0
+
+    for colonne in colonnes:
+        valeurs = pd.to_numeric(df[colonne], errors="coerce").dropna()
+        if valeurs.empty:
+            continue
+
+        premier, troisieme = valeurs.quantile([0.25, 0.75])
+        ecart = troisieme - premier
+        borne_basse = premier - FACTEUR_IQR * ecart
+        borne_haute = troisieme + FACTEUR_IQR * ecart
+
+        inferieurs = valeurs[valeurs < borne_basse]
+        superieurs = valeurs[valeurs > borne_haute]
+        nombre = len(inferieurs) + len(superieurs)
+        total += nombre
+
+        lignes.append(
+            (
+                colonne,
+                nombre,
+                nombre / len(valeurs),
+                _intervalle(inferieurs),
+                _intervalle(superieurs),
+            )
+        )
+
+    print()
+    print(f"[OUTLIERS IQR] : {total} valeurs extremes (seuil {FACTEUR_IQR:g} x IQR)")
+
+    largeur = max(len(colonne) for colonne, *_ in lignes)
+    entete = (
+        f"  {'colonne':<{largeur}} {'volume':>7} {'part':>8}  "
+        f"{'inferieurs (min..max)':<24} superieurs (min..max)"
+    )
+    print(entete)
+    for colonne, nombre, part, bas, haut in sorted(lignes, key=lambda l: -l[2]):
+        print(f"  {colonne:<{largeur}} {nombre:>7} {part:>7.2%}  {bas:<24} {haut}")
+
+    return df
+
+
+def _intervalle(valeurs: pd.Series) -> str:
+    """ "min..max" des valeurs extremes d'un cote, ou "-" s'il n'y en a aucune."""
+    if valeurs.empty:
+        return "-"
+    return f"{valeurs.min():g}..{valeurs.max():g}"
+
+
 TRANSFORMATIONS: tuple[Transformation, ...] = (
     dedupliquer_clients,
     standardiser_date_souscription,
@@ -690,6 +757,7 @@ TRANSFORMATIONS: tuple[Transformation, ...] = (
     typer_colonnes,
     imputer_revenu_par_catalogue,
     imputer_valeurs_manquantes,
+    analyser_outliers_iqr,
 )
 
 
