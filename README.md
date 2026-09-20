@@ -20,9 +20,12 @@ livrable :
 - modele de classification (cible principal) : le client resilie ou ne resilie pas à l'échéance
 - modele de regression (cible secondaire) : estimation de la valeur vie client
 
-### Cadrage
 
-KPI métier :
+### Etapes
+
+# 1. Cadrage métier
+
+### Définition des KPI métier :
 
 Churn
 - Taux de churn : clients ayant résiliés / clients total (définir un niveau auquel il ne faut pas passer en dessous)
@@ -34,11 +37,20 @@ Valeur vie client
 - Ecart estimation CLV - CLV a un instant T 
 
 -> l'objectif est de rapprocher ces valeurs pour maximiser le chiffre d'affaire
-git sta
 
-### Etapes
+### FP vs FN (problème de classification)
 
-# 1. Visualisation des données sous forme graphique
+Faux positifs = le modèle prédit une resiliation alors que le client ne prévoit pas de résilier (fausse alerte)
+Faux négatifs = le modèle prédit une non-résiliation alors que le client prévoit de résilier (résiliation manquée)
+
+Les faux positifs sont moins grave que les faux négatifs car ils impliquent principalement du temps d'investigation de la part du CSM et un dérangement du client, alors que les faux négatifs impliquent une perte de chiffre d'affaire immédiate.
+
+# 2. Choix du type de modèle
+
+On connait le label (ce que l'on veut prédire = churn) donc il s'agit d'un problème de machine learning
+avec apprentissage supervisé
+
+# 3. Visualisation des données sous forme graphique
 
 Scripts de génération : `src/visualization/scripts`
 Graphiques générés : `src/visualization/graphs`
@@ -61,7 +73,7 @@ Graphiques générés : `src/visualization/graphs`
 | `retards_paiement_12m` | asymétrique |
 | `sante_compte_fin_periode` | asymétrique |
 
-# 2. Ingestion
+# 4. Ingestion
 
 ### 🥉 Bronze
 
@@ -295,3 +307,19 @@ Les modalités sont déclarées dans `MODALITES_ONE_HOT`
 (`src/ml_churn/ingestion/models/gold.py`) et non déduites des données : le
 schéma de la table reste ainsi stable quel que soit le contenu du lot chargé, et
 toute modalité inattendue déclenche un `WARNING` au lieu de casser l'insertion.
+
+# 5. Entrainement des modèles
+
+## 1. Choix des modèles
+
+Modèles disponibles :
+- regression linéaire : regression
+- regression logistique : classification
+- Random Forest : classification
+- XG Boost : classification
+- Gradient boosting : classification
+
+### Baseline models
+
+- regression linéaire : regression
+- regression logistique : classification
