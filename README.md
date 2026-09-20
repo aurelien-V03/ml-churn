@@ -91,6 +91,17 @@ Le catalogue est chargé en amont, ses plans servant à l'imputation du revenu.
 
 Les sections ci-dessous détaillent chacune de ces étapes.
 
+#### Colonnes écartées
+
+Le filtre se déclare dans le modèle : une colonne absente de `ChurnSaasSilver`
+n'est pas lue depuis bronze.
+
+| Colonne | Raison |
+| --- | --- |
+| `fonctionnalites_total` | Dénormalisation du plan, identique à `catalogue_silver.fonctionnalites_incluses` sur toutes les lignes. Le catalogue est la source de vérité. |
+
+Toutes les autres colonnes du CSV sont reprises.
+
 ### 1. Déduplication
 
 `client_id` ne doit apparaître qu'une fois.
@@ -204,9 +215,20 @@ affichée dans le log de l'ingestion.
 
 `silver` → `gold`, pour les deux tables : `catalogue_gold` et `churn_saas_gold`.
 La structure de silver est reprise, complétée par des colonnes calculées
-destinées à la modélisation. Seule exception : `commentaire_csm` n'est pas
-repris, `polarite_csm` le résume. La couche est entièrement rechargée à chaque
+destinées à la modélisation. La couche est entièrement rechargée à chaque
 exécution.
+
+#### Colonnes écartées
+
+Même mécanisme qu'en silver : une colonne absente de `ChurnSaasGold` n'est pas
+lue depuis silver.
+
+| Colonne | Raison |
+| --- | --- |
+| `commentaire_csm` | Texte libre sans usage en modélisation ; `polarite_csm` en conserve le signal. |
+
+`fonctionnalites_total`, déjà écartée en silver, n'apparaît donc pas non plus
+ici.
 
 ```bash
 uv run python -m ml_churn.ingestion.scripts.ingest_gold
@@ -227,7 +249,7 @@ Comme en silver, chaque action est une fonction indépendante, listée dans les
 | --- | --- | --- |
 | `inactivite_relative` | `derniere_connexion_jours / (anciennete_mois × 30)` | 15 jours sans connexion ne pèsent pas pareil à 1 mois et à 3 ans d'ancienneté |
 | `inactif_30j` | `derniere_connexion_jours >= 30` | Isole les comptes dormants, dont le risque de résiliation est nettement plus élevé |
-| `taux_fonctionnalites` | `fonctionnalites_utilisees / fonctionnalites_total` | Normalise par le plan : 3 fonctionnalités sur 8 (Starter) ou sur 40 (Enterprise) ne décrivent pas la même adoption |
+| `taux_fonctionnalites` | `fonctionnalites_utilisees / catalogue.fonctionnalites_incluses` | Normalise par le plan : 3 fonctionnalités sur 8 (Starter) ou sur 40 (Enterprise) ne décrivent pas la même adoption |
 | `niveau_anciennete` | tranches d'`anciennete_mois` | Segmentation du cycle de vie, encodée en one-hot |
 
 Les seuils sont des constantes en tête du script (`SEUIL_INACTIVITE_JOURS`,
@@ -244,13 +266,19 @@ contractuel (fin d'onboarding, premier renouvellement annuel) :
 
 ### 2. Encodage one-hot
 
-Neuf colonnes catégorielles donnent **43 colonnes binaires** (`0` / `1`), selon
+Dix colonnes catégorielles donnent **47 colonnes binaires** (`0` / `1`), selon
 la convention `[nom_colonne]_valeur` : `pays_fr`, `plan_str`,
-`niveau_anciennete_recent`…
+`polarite_csm_alerte`, `niveau_anciennete_recent`…
 
-`jour_souscription`, `secteur`, `pays`, `taille_entreprise`, `plan`,
-`couleur_theme_interface`, `code_datacenter`, `groupe_experimentation`,
-`niveau_anciennete`.
+| Colonne encodée | Origine |
+| --- | --- |
+| `jour_souscription`, `secteur`, `pays`, `taille_entreprise`, `plan`, `couleur_theme_interface`, `code_datacenter`, `groupe_experimentation` | standardisées en silver |
+| `polarite_csm` | dérivée du commentaire CSM en silver |
+| `niveau_anciennete` | dérivée en gold |
+
+`polarite_csm` donne `polarite_csm_alerte`, `_neutre`, `_positif` et `_absent` :
+l'absence de commentaire est une modalité à part entière, distincte d'un
+commentaire neutre.
 
 Deux règles de nommage : minuscules, et tout caractère non alphanumérique
 remplacé par `_` (`eu-w1` → `code_datacenter_eu_w1`), pour obtenir des

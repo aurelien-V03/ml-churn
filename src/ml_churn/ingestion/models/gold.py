@@ -42,6 +42,8 @@ MODALITES_ONE_HOT: dict[str, tuple[str, ...]] = {
     "couleur_theme_interface": ("C", "VE", "B", "V", "S"),
     "code_datacenter": ("eu-w1", "eu-w3", "us-e1", "ap-s1"),
     "groupe_experimentation": ("A", "B", "C"),
+    # Derivee du commentaire CSM en silver (cf. deriver_polarite_csm).
+    "polarite_csm": ("ALERTE", "NEUTRE", "POSITIF", "ABSENT"),
     # Colonne derivee (cf. ajouter_colonnes_derivees).
     "niveau_anciennete": ("RECENT", "ETABLI", "ANCIEN"),
 }
@@ -169,6 +171,11 @@ class ChurnSaasGold(Base):
     groupe_experimentation_a: Mapped[int | None] = mapped_column(Integer)
     groupe_experimentation_b: Mapped[int | None] = mapped_column(Integer)
     groupe_experimentation_c: Mapped[int | None] = mapped_column(Integer)
+    # polarite_csm
+    polarite_csm_alerte: Mapped[int | None] = mapped_column(Integer)
+    polarite_csm_neutre: Mapped[int | None] = mapped_column(Integer)
+    polarite_csm_positif: Mapped[int | None] = mapped_column(Integer)
+    polarite_csm_absent: Mapped[int | None] = mapped_column(Integer)
     # niveau_anciennete
     niveau_anciennete_recent: Mapped[int | None] = mapped_column(Integer)
     niveau_anciennete_etabli: Mapped[int | None] = mapped_column(Integer)
