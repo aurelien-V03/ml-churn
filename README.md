@@ -323,3 +323,7 @@ Modèles disponibles :
 
 - regression linéaire : regression
 - regression logistique : classification
+
+## 2. Choic des métriques
+
+Il s'agit d'un dataset déséquilibré (28%)
