@@ -36,7 +36,7 @@ Churn
 Valeur vie client
 - Ecart estimation CLV - CLV a un instant T 
 
--> l'objectif est de rapprocher ces valeurs pour maximiser le chiffre d'affaire
+-> l'objectif est d'avoir un indicateur permettant de juger de la marge de profit restante, l'objectif est donc de rapprocher ces valeurs pour maximiser le chiffre d'affaire
 
 ### FP vs FN (problème de classification)
 
@@ -44,6 +44,16 @@ Faux positifs = le modèle prédit une resiliation alors que le client ne prévo
 Faux négatifs = le modèle prédit une non-résiliation alors que le client prévoit de résilier (résiliation manquée)
 
 Les faux positifs sont moins grave que les faux négatifs car ils impliquent principalement du temps d'investigation de la part du CSM et un dérangement du client, alors que les faux négatifs impliquent une perte de chiffre d'affaire immédiate.
+
+### Hypothèse
+
+La resiliation est à ces raisons :
+- satisfaction client
+    - support de qualité (peu de demande et traitement rapide)
+    - services offert sont utilisés (correspond à la demande de l'utilisateur)
+- Bon payeur
+    - grosse entreprise
+    - pas de retard de paiement    
 
 # 2. Choix du type de modèle
 

@@ -31,11 +31,17 @@ def numeric_column(df: pd.DataFrame, column: str) -> pd.Series:
     ).dropna()
 
 
-def export_figure(figure: plt.Figure, column: str, prefix: str, *, show: bool) -> Path:
-    """graphs/<column>/<prefix>_<column>.png : un dossier par colonne."""
+def export_figure(
+    figure: plt.Figure, folder: str, filename: str, *, show: bool
+) -> Path:
+    """graphs/<folder>/<filename>.png
+
+    Les graphiques d'une seule colonne vont dans le dossier de cette colonne ;
+    ceux qui en croisent deux ont leur propre dossier par type.
+    """
     figure.tight_layout()
 
-    path = GRAPHS_DIR / column / f"{prefix}_{column}.png"
+    path = GRAPHS_DIR / folder / f"{filename}.png"
     path.parent.mkdir(parents=True, exist_ok=True)
     figure.savefig(path, dpi=120)
 

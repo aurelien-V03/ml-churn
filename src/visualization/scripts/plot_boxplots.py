@@ -100,7 +100,7 @@ def _render(values: pd.Series, spec: BoxSpec, *, show: bool) -> Path:
     axes.spines[["top", "right", "bottom"]].set_visible(False)
     axes.grid(axis="y", alpha=0.3)
 
-    return export_figure(figure, spec.column, PREFIX, show=show)
+    return export_figure(figure, spec.column, f"{PREFIX}_{spec.column}", show=show)
 
 
 def plot_boxplots(*, show: bool = True, echo: bool = True) -> list[Path]:
