@@ -63,10 +63,24 @@ Graphiques générés : `src/visualization/graphs`
 
 # 2. Ingestion
 
+### 🥉 Bronze
+
+Les CSV de `docs/` sont copiés tels quels dans le schéma `bronze` : **toutes les
+colonnes métier sont en `TEXT`**, aucune conversion ni nettoyage (dates
+hétérogènes, virgules décimales, casse et espaces restent bruts — c'est le
+travail de la couche silver). Chaque ligne porte en plus `_source_file`,
+`_source_line` et `_ingested_at`.
+
+| CSV | Table |
+| --- | --- |
+| `docs/catalogue_plans.csv` | `bronze.catalogue_bronze` |
+| `docs/churn_saas_complet.csv` | `bronze.churn_saas_complet_bronze` |
+| `docs/churn_saas_echantillon.csv` | `bronze.churn_saas_echantillon_bronze` |
+
 On utilise uniquement le fichire churn_saas_complet comme source de donnée, churn_saas_echantillon n'est pas inclu car cela provoquerait des doublons.
 Pas besoin d'anonymisation car les données concernent des entreprises.
 
-## 🥈 Silver
+### 🥈 Silver
 
 Chaque action est une fonction indépendante référencée dans `TRANSFORMATIONS`
 (`src/ml_churn/ingestion/scripts/ingest_silver.py`) et appliquée dans cet ordre.
@@ -207,10 +221,6 @@ affichée dans le log de l'ingestion.
 | `revenu_mensuel_recurrent_eur` | `sieges_souscrits` × `prix_mensuel_par_siege_eur` |
 | `polarite_csm` | modalité explicite |
 
-> Les valeurs sont calculées sur l'ensemble du dataset. En cas de découpage
-> train/test ultérieur, elles devront être recalculées sur le train seul pour
-> ne pas y faire fuiter le test.
-
 ## 🥇 Gold
 
 `silver` → `gold`, pour les deux tables : `catalogue_gold` et `churn_saas_gold`.
@@ -229,10 +239,6 @@ lue depuis silver.
 
 `fonctionnalites_total`, déjà écartée en silver, n'apparaît donc pas non plus
 ici.
-
-```bash
-uv run python -m ml_churn.ingestion.scripts.ingest_gold
-```
 
 Comme en silver, chaque action est une fonction indépendante, listée dans les
 `transformations` de la table concernée
@@ -289,54 +295,3 @@ Les modalités sont déclarées dans `MODALITES_ONE_HOT`
 (`src/ml_churn/ingestion/models/gold.py`) et non déduites des données : le
 schéma de la table reste ainsi stable quel que soit le contenu du lot chargé, et
 toute modalité inattendue déclenche un `WARNING` au lieu de casser l'insertion.
-
-### Base de données
-
-PostgreSQL via Docker Compose (`docker-compose.yml`) :
-On utilise le robust z-score
-```bash
-cp .env.example .env
-docker compose up -d
-```
-
-Les schémas `bronze`, `silver` et `gold` sont créés au premier démarrage par
-`docker/postgres/init/01-schemas.sql` (rejoué uniquement si le volume est vide :
-`docker compose down -v` pour repartir de zéro).
-
-#### pgAdmin
-
-Interface d'administration sur http://localhost:5050 — pas d'écran de connexion
-(mode local), le serveur `ml-churn` est déjà déclaré dans l'arbre via
-`docker/pgadmin/servers.json`. Au premier clic sur le serveur, pgAdmin demande le
-mot de passe de l'utilisateur `mlchurn` (celui du `.env`, `mlchurn` par défaut) ;
-cocher « Save password » pour ne plus l'avoir à le saisir.
-
-Accès en ligne de commande sans passer par l'interface :
-
-```bash
-docker compose exec postgres psql -U mlchurn -d mlchurn
-```
-
-### 🥉 Ingestion — couche bronze
-
-Les CSV de `docs/` sont copiés tels quels dans le schéma `bronze` : **toutes les
-colonnes métier sont en `TEXT`**, aucune conversion ni nettoyage (dates
-hétérogènes, virgules décimales, casse et espaces restent bruts — c'est le
-travail de la couche silver). Chaque ligne porte en plus `_source_file`,
-`_source_line` et `_ingested_at`.
-
-| CSV | Table |
-| --- | --- |
-| `docs/catalogue_plans.csv` | `bronze.catalogue_bronze` |
-| `docs/churn_saas_complet.csv` | `bronze.churn_saas_complet_bronze` |
-| `docs/churn_saas_echantillon.csv` | `bronze.churn_saas_echantillon_bronze` |
-
-```bash
-uv run python -m ml_churn.ingestion.scripts.ingest_bronze
-```
-
-Les tables sont vidées puis rechargées : relancer l'ingestion ne crée pas de
-doublons (`--append` pour conserver l'existant). Le code est dans
-`src/ml_churn/ingestion/` (`models/` pour les modèles SQLAlchemy, `scripts/`
-pour les scripts), et la dernière cellule de `churn-notebook.ipynb` lance la
-même ingestion.
