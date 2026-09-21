@@ -11,3 +11,8 @@ wheels/
 
 # Env local
 .env.*
+
+# Suivi des experimentations MLflow
+mlflow.db
+mlartifacts/
+mlruns/

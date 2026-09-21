@@ -18,17 +18,16 @@ def log_dataset(
     df: pd.DataFrame,
     features: list[str],
     exclusions: dict[str, str],
-    X_train: pd.DataFrame,
-    X_test: pd.DataFrame,
+    tailles: dict[str, int],
     y_test: pd.Series,
 ) -> None:
-    """Volumetrie, features retenues et decoupage train/test."""
+    """Volumetrie, features retenues et decoupage des trois jeux."""
     print(f"[DONNEES] : {len(df)} clients, {len(features)} features")
     print(f"  exclues : {', '.join(sorted(exclusions))}")
-    print(
-        f"  train {len(X_train)} / test {len(X_test)} "
-        f"(churn {y_test.mean():.2%} dans le test)"
+    detail = " / ".join(
+        f"{nom.removeprefix('n_')} {taille}" for nom, taille in tailles.items()
     )
+    print(f"  {detail}  (churn {y_test.mean():.2%} dans le test)")
 
 
 def log_metrics(metrics: dict[str, float]) -> None:
@@ -73,8 +72,7 @@ def log_classification_training(
     df: pd.DataFrame,
     features: list[str],
     exclusions: dict[str, str],
-    X_train: pd.DataFrame,
-    X_test: pd.DataFrame,
+    tailles: dict[str, int],
     y_test: pd.Series,
     metrics: dict[str, float],
     matrix: np.ndarray,
@@ -82,7 +80,7 @@ def log_classification_training(
     weights_titre: str = "COEFFICIENTS",
 ) -> None:
     """Bilan complet d'un entrainement de classification."""
-    log_dataset(df, features, exclusions, X_train, X_test, y_test)
+    log_dataset(df, features, exclusions, tailles, y_test)
     log_metrics(metrics)
     log_confusion_matrix(matrix)
     log_feature_weights(weights, titre=weights_titre)

@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
+
 import pandas as pd
+from sklearn.model_selection import train_test_split
 
 from ml_churn.ingestion.db import get_engine
 from ml_churn.ingestion.models import ChurnSaasGold
@@ -42,3 +45,63 @@ def feature_columns(target: str, exclusions: dict[str, str]) -> list[str]:
         and colonne.key not in exclusions
         and not colonne.key.startswith("_")
     ]
+
+
+# Trois jeux disjoints : 60 % train, 20 % validation, 20 % test.
+TEST_SIZE = 0.2
+VALIDATION_SIZE = 0.2
+RANDOM_STATE = 42
+
+
+@dataclass(frozen=True)
+class Split:
+    """Les trois jeux, chacun avec son role.
+
+    train      : le modele y apprend ses coefficients.
+    validation : on y choisit les hyperparametres (dont le seuil).
+    test       : mesure finale, utilise une seule fois.
+    """
+
+    X_train: pd.DataFrame
+    X_validation: pd.DataFrame
+    X_test: pd.DataFrame
+    y_train: pd.Series
+    y_validation: pd.Series
+    y_test: pd.Series
+
+    @property
+    def tailles(self) -> dict[str, int]:
+        return {
+            "n_train": len(self.X_train),
+            "n_validation": len(self.X_validation),
+            "n_test": len(self.X_test),
+        }
+
+
+def split_train_validation_test(X: pd.DataFrame, y: pd.Series) -> Split:
+    """Decoupe en trois jeux stratifies, en deux temps.
+
+    Le meme decoupage pour tous les modeles : leurs metriques restent
+    comparables, et aucun n'a vu le test avant la mesure finale.
+    """
+    X_reste, X_test, y_reste, y_test = train_test_split(
+        X, y, test_size=TEST_SIZE, random_state=RANDOM_STATE, stratify=y
+    )
+    # La part de validation est exprimee sur le total, d'ou le reajustement.
+    part_validation = VALIDATION_SIZE / (1 - TEST_SIZE)
+    X_train, X_validation, y_train, y_validation = train_test_split(
+        X_reste,
+        y_reste,
+        test_size=part_validation,
+        random_state=RANDOM_STATE,
+        stratify=y_reste,
+    )
+
+    return Split(
+        X_train=X_train,
+        X_validation=X_validation,
+        X_test=X_test,
+        y_train=y_train,
+        y_validation=y_validation,
+        y_test=y_test,
+    )

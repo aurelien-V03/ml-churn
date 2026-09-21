@@ -13,13 +13,21 @@ FORMULES: dict[str, str] = {
 }
 
 
+def _ratio(numerateur: float, denominateur: float) -> float:
+    """0.0 quand le denominateur est nul : au seuil 1.0, aucune alerte n'est
+    emise et la precision n'est pas definie."""
+    return float(numerateur / denominateur) if denominateur else 0.0
+
+
 def classification_metrics(matrix: np.ndarray) -> dict[str, float]:
     """TP : churners detectes. FN : churners manques. FP : fausses alertes."""
     (true_negatives, false_positives), (false_negatives, true_positives) = matrix
 
     return {
-        "accuracy": (true_positives + true_negatives) / matrix.sum(),
-        "recall": true_positives / (true_positives + false_negatives),
-        "false_positive_rate": false_positives / (false_positives + true_negatives),
-        "precision": true_positives / (true_positives + false_positives),
+        "accuracy": _ratio(true_positives + true_negatives, matrix.sum()),
+        "recall": _ratio(true_positives, true_positives + false_negatives),
+        "false_positive_rate": _ratio(
+            false_positives, false_positives + true_negatives
+        ),
+        "precision": _ratio(true_positives, true_positives + false_positives),
     }
