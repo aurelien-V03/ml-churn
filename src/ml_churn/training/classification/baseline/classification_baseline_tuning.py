@@ -10,7 +10,7 @@ le test reviendrait a s'y ajuster, et la performance annoncee serait
 surestimee.
 
 Usage :
-    uv run python -m ml_churn.training.scripts.classification.baseline.classification_baseline_tuning
+    uv run python -m ml_churn.training.classification.baseline.classification_baseline_tuning
 """
 
 from __future__ import annotations
@@ -23,19 +23,19 @@ import pandas as pd
 import typer
 from sklearn.metrics import confusion_matrix
 
-from ml_churn.training.scripts.classification.baseline.classification_baseline_training import (
+from ml_churn.training.classification.baseline.classification_baseline_training import (
     EXCLUSIONS,
     TARGET,
     build_baseline_pipeline,
 )
-from ml_churn.training.scripts.common.data import (
+from ml_churn.training.common.data import (
     feature_columns,
     load_gold,
     split_train_validation_test,
 )
-from ml_churn.training.scripts.common.metrics import classification_metrics
-from ml_churn.training.scripts.common.plots import confusion_matrix_figure
-from ml_churn.training.scripts.common.tracking import mlflow_tracking
+from ml_churn.training.common.metrics import classification_metrics
+from ml_churn.training.common.plots import confusion_matrix_figure
+from ml_churn.training.common.tracking import mlflow_tracking
 
 EXPERIMENT = "classification-baseline"
 

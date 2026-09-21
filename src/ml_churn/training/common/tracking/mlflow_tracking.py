@@ -25,8 +25,20 @@ os.environ.setdefault("MLFLOW_DISABLE_AGENT_HINT", "1")
 
 import mlflow
 
-# scripts/common/tracking/ -> common -> scripts -> training -> ml_churn -> src -> racine
-PROJECT_ROOT = Path(__file__).resolve().parents[6]
+
+def _racine_projet() -> Path:
+    """Remonte jusqu'au dossier contenant `pyproject.toml`.
+
+    Un simple `parents[n]` casserait silencieusement au moindre deplacement du
+    module dans l'arborescence, en pointant vers un dossier voisin.
+    """
+    for dossier in Path(__file__).resolve().parents:
+        if (dossier / "pyproject.toml").exists():
+            return dossier
+    raise RuntimeError("pyproject.toml introuvable : racine du projet inconnue")
+
+
+PROJECT_ROOT = _racine_projet()
 TRACKING_DB = PROJECT_ROOT / "mlflow.db"
 ARTIFACTS_DIR = PROJECT_ROOT / "mlartifacts"
 

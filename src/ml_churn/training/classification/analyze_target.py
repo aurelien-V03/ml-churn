@@ -5,7 +5,7 @@ qui predirait "personne ne resilie" aurait deja une exactitude egale a la part
 de clients actifs.
 
 Usage :
-    uv run python -m ml_churn.training.scripts.analyze_target
+    uv run python -m ml_churn.training.analyze_target
 """
 
 from __future__ import annotations

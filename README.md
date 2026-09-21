@@ -1,3 +1,43 @@
+## Structure du projet
+
+```
+churn-notebook.ipynb        Déroulé complet : exploration, ingestion, entraînement
+docker-compose.yml          PostgreSQL + pgAdmin
+docs/                       Données sources (CSV) et énoncé du cas d'usage
+mlflow.db, mlartifacts/     Suivi des expérimentations (généré)
+
+src/
+├── ml_churn/               Package installé (`uv run python -m ml_churn...`)
+│   ├── ingestion/          Médaillon : CSV → bronze → silver → gold
+│   │   ├── db.py           Connexion PostgreSQL
+│   │   ├── logs.py         Format de log commun aux trois couches
+│   │   ├── models/         Modèles SQLAlchemy, un fichier par couche
+│   │   └── scripts/        Un script par couche, plus `ingest_all`
+│   └── training/
+│       ├── common/         Chargement gold, découpage, métriques, logs, figures
+│       │   └── tracking/   Suivi MLflow, commun à tous les modèles
+│       ├── classification/ Prédiction du churn (cible `churn`)
+│       │   └── baseline/   Régression logistique + recherche de seuil
+│       └── regression/     Valeur vie client (cible `valeur_vie_client_eur`)
+│           └── baseline/
+└── visualization/          Hors package, importé via `sys.path`
+    ├── scripts/            Un script par type de graphique, plus `plot_all`
+    └── graphs/             PNG générés, un dossier par colonne (généré)
+```
+
+Trois responsabilités séparées :
+
+| Dossier | Rôle |
+| --- | --- |
+| `ingestion/` | Charger et transformer les données, du CSV brut à la table exploitable |
+| `visualization/` | Comprendre les données : distributions, valeurs extrêmes, relations au churn |
+| `training/` | Entraîner et évaluer les modèles, en suivant les runs dans MLflow |
+
+Les scripts sont autonomes, exécutables en ligne de commande comme importables
+depuis le notebook. Le code partagé entre
+plusieurs scripts vit dans un `common/` — jamais dupliqué d'un modèle à
+l'autre.
+
 ## Notes personnelles
 
 ### Données

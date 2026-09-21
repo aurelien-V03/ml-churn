@@ -8,7 +8,7 @@ de periode, elle n'est pas disponible au moment de la prediction. L'inclure
 ferait grimper l'AUC a 0.99 sans valeur en production.
 
 Usage :
-    uv run python -m ml_churn.training.scripts.classification.baseline.classification_baseline_training
+    uv run python -m ml_churn.training.classification.baseline.classification_baseline_training
 """
 
 from __future__ import annotations
@@ -21,15 +21,15 @@ from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import confusion_matrix, roc_auc_score
 from sklearn.pipeline import Pipeline
 
-from ml_churn.training.scripts.common.data import (
+from ml_churn.training.common.data import (
     EXCLUSIONS_COMMUNES,
     RANDOM_STATE,
     feature_columns,
     load_gold,
     split_train_validation_test,
 )
-from ml_churn.training.scripts.common.logs import log_classification_training
-from ml_churn.training.scripts.common.metrics import classification_metrics
+from ml_churn.training.common.logs import log_classification_training
+from ml_churn.training.common.metrics import classification_metrics
 
 TARGET = "churn"
 

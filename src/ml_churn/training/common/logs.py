@@ -11,7 +11,7 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 
-from ml_churn.training.scripts.common.metrics import FORMULES
+from ml_churn.training.common.metrics import FORMULES
 
 
 def log_dataset(
