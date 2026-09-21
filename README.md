@@ -91,6 +91,7 @@ Observation par rapport aux hypothèses :
     - Plus le délai de réponse du support et long plus le taux de churn augmente
     - Plus le nombre de tickets supports au cours des 90j augmente plus le taux de churn augmente
 - Bon payeur
+    - Plus l'entreprise est grosse plus le churn rate tend à baisser
     - Plus le client a des retards de payement plus le taux de churn augmente
 
 # 4. Ingestion

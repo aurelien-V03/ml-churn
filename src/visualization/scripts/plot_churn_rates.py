@@ -33,8 +33,11 @@ class ChurnRateSpec:
 
     column: str
     label: str
-    bornes: tuple[float, ...]
-    etiquettes: tuple[str, ...]
+    # Variable numerique : bornes des tranches et leurs etiquettes.
+    bornes: tuple[float, ...] = ()
+    etiquettes: tuple[str, ...] = ()
+    # Variable categorielle : modalites dans l'ordre d'affichage voulu.
+    ordre: tuple[str, ...] = ()
 
     @property
     def filename(self) -> str:
@@ -66,6 +69,12 @@ CHURN_RATES: tuple[ChurnRateSpec, ...] = (
         bornes=(-1, 0, 1, 2, np.inf),
         etiquettes=("0", "1", "2", "3+"),
     ),
+    ChurnRateSpec(
+        column="taille_entreprise",
+        label="Taille d'entreprise",
+        # Categorielle : de la plus petite structure a la plus grande.
+        ordre=("TPE", "PME", "ETI", "GE"),
+    ),
 )
 
 
@@ -76,12 +85,23 @@ def _numeric(df: pd.DataFrame, column: str) -> pd.Series:
     return pd.to_numeric(cleaned.str.replace(",", ".", regex=False), errors="coerce")
 
 
-def _taux_par_tranche(df: pd.DataFrame, spec: ChurnRateSpec) -> pd.DataFrame:
-    valeurs = _numeric(df, spec.column)
-    churn = _numeric(df, CIBLE)
+def _modalites(df: pd.DataFrame, spec: ChurnRateSpec) -> pd.Series:
+    """Casse et espaces harmonises, puis modalites limitees a `ordre`."""
+    valeurs = df[spec.column].astype("string").str.strip().str.upper()
+    return pd.Categorical(valeurs, categories=list(spec.ordre), ordered=True)
 
-    tranches = pd.cut(valeurs, bins=list(spec.bornes), labels=list(spec.etiquettes))
-    groupes = pd.DataFrame({"tranche": tranches, "churn": churn}).dropna()
+
+def _taux_par_tranche(df: pd.DataFrame, spec: ChurnRateSpec) -> pd.DataFrame:
+    if spec.ordre:
+        tranches = _modalites(df, spec)
+    else:
+        tranches = pd.cut(
+            _numeric(df, spec.column),
+            bins=list(spec.bornes),
+            labels=list(spec.etiquettes),
+        )
+
+    groupes = pd.DataFrame({"tranche": tranches, "churn": _numeric(df, CIBLE)}).dropna()
 
     return groupes.groupby("tranche", observed=True)["churn"].agg(
         clients="size", taux="mean"
