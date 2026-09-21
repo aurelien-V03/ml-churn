@@ -40,6 +40,9 @@ def _racine_projet() -> Path:
 
 PROJECT_ROOT = _racine_projet()
 TRACKING_DB = PROJECT_ROOT / "mlflow.db"
+
+# Nombre de decimales des metriques enregistrees.
+DECIMALES = 2
 ARTIFACTS_DIR = PROJECT_ROOT / "mlartifacts"
 
 
@@ -87,9 +90,15 @@ def run(
 
 
 def log_metrics(metrics: dict[str, float], *, step: int | None = None) -> None:
-    """Enregistre les metriques du run en cours."""
+    """Enregistre les metriques du run en cours, arrondies.
+
+    L'arrondi ne concerne que ce qui est stocke dans MLflow : les decisions
+    (choix du seuil, comparaison des essais) se prennent sur les valeurs
+    completes, en memoire.
+    """
     mlflow.log_metrics(
-        {nom: float(valeur) for nom, valeur in metrics.items()}, step=step
+        {nom: round(float(valeur), DECIMALES) for nom, valeur in metrics.items()},
+        step=step,
     )
 
 
