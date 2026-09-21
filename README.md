@@ -55,6 +55,8 @@ La resiliation est à ces raisons :
     - grosse entreprise
     - pas de retard de paiement    
 
+
+
 # 2. Choix du type de modèle
 
 On connait le label (ce que l'on veut prédire = churn) donc il s'agit d'un problème de machine learning
@@ -82,6 +84,14 @@ Graphiques générés : `src/visualization/graphs`
 | `csat` | asymétrique |
 | `retards_paiement_12m` | asymétrique |
 | `sante_compte_fin_periode` | asymétrique |
+
+Observation par rapport aux hypothèses :
+
+- satisfaction client
+    - Plus le délai de réponse du support et long plus le taux de churn augmente
+    - Plus le nombre de tickets supports au cours des 90j augmente plus le taux de churn augmente
+- Bon payeur
+    - Plus le client a des retards de payement plus le taux de churn augmente
 
 # 4. Ingestion
 

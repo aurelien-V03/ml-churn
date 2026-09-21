@@ -58,6 +58,14 @@ CHURN_RATES: tuple[ChurnRateSpec, ...] = (
         bornes=(-1, 0, 2, 5, 8, np.inf),
         etiquettes=("0", "1-2", "3-5", "6-8", "9+"),
     ),
+    ChurnRateSpec(
+        column="retards_paiement_12m",
+        label="Retards de paiement (12 mois)",
+        # Premiere borne a -1 : la tranche "0" doit contenir les clients sans
+        # aucun retard, plus de la moitie de l'effectif.
+        bornes=(-1, 0, 1, 2, np.inf),
+        etiquettes=("0", "1", "2", "3+"),
+    ),
 )
 
 

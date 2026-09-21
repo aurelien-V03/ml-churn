@@ -17,6 +17,7 @@ from visualization.scripts.plot_boxplots import plot_boxplots
 from visualization.scripts.plot_churn_rates import plot_churn_rates
 from visualization.scripts.plot_grouped_boxplots import plot_grouped_boxplots
 from visualization.scripts.plot_histograms import plot_histograms
+from visualization.scripts.plot_scatters import plot_scatters
 
 Generation = Callable[..., list[Path]]
 
@@ -25,6 +26,7 @@ GENERATIONS: tuple[tuple[str, Generation], ...] = (
     ("BOITES A MOUSTACHES", plot_boxplots),
     ("BOITES A MOUSTACHES GROUPEES", plot_grouped_boxplots),
     ("TAUX DE CHURN PAR TRANCHE", plot_churn_rates),
+    ("TAUX DE CHURN PAR VALEUR", plot_scatters),
 )
 
 
