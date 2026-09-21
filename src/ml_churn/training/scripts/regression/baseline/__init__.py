@@ -1,0 +1,1 @@
+"""Modele baseline de regression."""

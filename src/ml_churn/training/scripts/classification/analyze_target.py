@@ -16,7 +16,7 @@ import typer
 from ml_churn.ingestion.db import get_engine
 from ml_churn.ingestion.models import ChurnSaasGold
 
-LIBELLES = {0: "actif", 1: "resilie"}
+LABELS = {0: "actif", 1: "resilie"}
 
 
 def analyze_target(*, echo: bool = True) -> dict[int, int]:
@@ -26,17 +26,17 @@ def analyze_target(*, echo: bool = True) -> dict[int, int]:
     """
     table = ChurnSaasGold.__table__.fullname
     churn = pd.read_sql(f"select churn from {table}", get_engine())["churn"]
-    effectifs = churn.value_counts().sort_index()
+    counts = churn.value_counts().sort_index()
 
     if echo:
-        for valeur, nombre in effectifs.items():
-            libelle = LIBELLES.get(valeur, "?")
-            part = nombre / len(churn)
-            print(f"churn = {valeur} ({libelle:<8}) : {nombre} clients ({part:.2%})")
+        for value, count in counts.items():
+            label = LABELS.get(value, "?")
+            share = count / len(churn)
+            print(f"churn = {value} ({label:<8}) : {count} clients ({share:.2%})")
 
         print(f"\ntaux de churn : {churn.mean():.2%} sur {len(churn)} clients")
 
-    return {int(valeur): int(nombre) for valeur, nombre in effectifs.items()}
+    return {int(value): int(count) for value, count in counts.items()}
 
 
 app = typer.Typer(help=__doc__)

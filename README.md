@@ -345,6 +345,15 @@ Modèles disponibles :
 - regression linéaire : regression
 - regression logistique : classification
 
+### Choix des features
+
+Data leakage :
+    - sante_compte_fin_periode
 ## 2. Choic des métriques
 
 Il s'agit d'un dataset déséquilibré (28%)
+
+# 6 TODO
+
+- bien penser a versionner les modeles (avec leurs donnes)
+- ajouter makefile
