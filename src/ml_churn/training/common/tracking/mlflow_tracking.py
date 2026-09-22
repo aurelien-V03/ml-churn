@@ -84,10 +84,23 @@ def run(
 
     with mlflow.start_run(run_name=run_name, nested=nested) as actif:
         if params:
-            mlflow.log_params(params)
+            mlflow.log_params(_arrondir(params))
         if tags:
             mlflow.set_tags(tags)
         yield actif
+
+
+def _arrondir(params: dict[str, Any]) -> dict[str, Any]:
+    """Arrondit les parametres flottants, les autres types passent tels quels.
+
+    Un hyperparametre tire sur une echelle logarithmique peut tomber sous le
+    centieme : il est alors enregistre comme 0.0, la valeur exacte restant
+    dans l'objet Optuna.
+    """
+    return {
+        nom: round(valeur, DECIMALES) if isinstance(valeur, float) else valeur
+        for nom, valeur in params.items()
+    }
 
 
 def log_metrics(metrics: dict[str, float], *, step: int | None = None) -> None:
@@ -114,6 +127,22 @@ def log_figure(figure: Any, nom: str) -> None:
     plt.close(figure)
 
 
-def log_model(model: Any, nom: str, *, input_example: Any = None) -> None:
-    """Enregistre le modele entraine comme artefact du run en cours."""
-    mlflow.sklearn.log_model(model, name=nom, input_example=input_example)
+def log_model(
+    model: Any,
+    nom: str,
+    *,
+    input_example: Any = None,
+    trusted_types: list[str] | None = None,
+) -> None:
+    """Enregistre le modele entraine comme artefact du run en cours.
+
+    MLflow serialise les pipelines scikit-learn avec skops, qui refuse par
+    defaut les types venus d'autres bibliotheques. `trusted_types` autorise
+    ceux du modele enregistre -- `xgboost.sklearn.XGBClassifier`, par exemple.
+    """
+    mlflow.sklearn.log_model(
+        model,
+        name=nom,
+        input_example=input_example,
+        skops_trusted_types=trusted_types,
+    )

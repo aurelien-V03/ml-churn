@@ -1,14 +1,25 @@
 {
-  "model": "classification_baseline",
-  "saved_at": "2026-09-22T17:24:08+02:00",
+  "model": "classification_xgboost",
+  "saved_at": "2026-09-22T17:32:06+02:00",
   "versions": {
     "python": "3.13",
     "scikit-learn": "1.9.0",
     "numpy": "2.5.3",
     "joblib": "1.6.0"
   },
-  "threshold": 0.5,
+  "threshold": 0.45000000000000007,
   "target": "churn",
+  "hyperparameters": {
+    "n_estimators": 550,
+    "max_depth": 3,
+    "learning_rate": 0.012476394272569451,
+    "subsample": 0.9795542149013333,
+    "colsample_bytree": 0.9793792198447356,
+    "min_child_weight": 17,
+    "gamma": 1.5230688458668533,
+    "reg_alpha": 7.569183361880229e-08,
+    "reg_lambda": 0.01439120761572808
+  },
   "features": [
     "anciennete_mois",
     "sieges_souscrits",
@@ -81,25 +92,25 @@
     "n_test": 1000
   },
   "test_metrics": {
-    "accuracy": 0.808,
-    "recall": 0.8,
-    "false_positive_rate": 0.1889,
-    "precision": 0.6222,
-    "auc": 0.8773
+    "accuracy": 0.788,
+    "recall": 0.8286,
+    "false_positive_rate": 0.2278,
+    "precision": 0.5859,
+    "auc": 0.8745
   },
   "datasets": {
     "train": {
-      "file": "classification_baseline_train.csv",
+      "file": "classification_xgboost_train.csv",
       "rows": 3000,
       "columns": 66
     },
     "validation": {
-      "file": "classification_baseline_validation.csv",
+      "file": "classification_xgboost_validation.csv",
       "rows": 1000,
       "columns": 66
     },
     "test": {
-      "file": "classification_baseline_test.csv",
+      "file": "classification_xgboost_test.csv",
       "rows": 1000,
       "columns": 66
     }

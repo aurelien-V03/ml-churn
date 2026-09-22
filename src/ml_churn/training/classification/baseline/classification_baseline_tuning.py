@@ -17,11 +17,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-import numpy as np
 import optuna
 import pandas as pd
 import typer
-from sklearn.metrics import confusion_matrix, roc_auc_score
+from sklearn.metrics import roc_auc_score
 
 from ml_churn.training.classification.baseline.classification_baseline_training import (
     EXCLUSIONS,
@@ -30,12 +29,18 @@ from ml_churn.training.classification.baseline.classification_baseline_training 
     build_baseline_pipeline,
 )
 from ml_churn.training.common.data import (
+    RANDOM_STATE,
     feature_columns,
     load_gold,
     split_train_validation_test,
 )
-from ml_churn.training.common.explain import shap_bar_figure, shap_summary_figure
-from ml_churn.training.common.metrics import classification_metrics
+from ml_churn.training.common.explain import log_shap_figures
+from ml_churn.training.common.metrics import (
+    PRECISION_MINIMALE,
+    classification_metrics,
+    confusion_at_threshold,
+    objective_score,
+)
 from ml_churn.training.common.plots import confusion_matrix_figure
 from ml_churn.training.common.tracking import mlflow_tracking
 
@@ -49,7 +54,6 @@ SEUILS: list[float] = [round(i * PAS_SEUIL, 1) for i in range(int(1 / PAS_SEUIL)
 # Objectif par defaut : le F1 equilibre precision et rappel sans supposer de
 # cout metier. `recall_sous_contrainte` privilegie la detection des churners.
 OBJECTIF = "f1"
-PRECISION_MINIMALE = 0.60
 
 
 @dataclass
@@ -62,28 +66,10 @@ class Tuning:
     essais: pd.DataFrame
 
 
-def _score(metrics: dict[str, float], objectif: str) -> float:
-    """Valeur a maximiser pour un jeu de metriques donne."""
-    precision, recall = metrics["precision"], metrics["recall"]
-
-    if objectif == "recall_sous_contrainte":
-        # Un modele qui alerte sur tout le monde a un rappel parfait : la
-        # contrainte de precision evite cette solution degeneree.
-        return recall if precision >= PRECISION_MINIMALE else 0.0
-
-    if precision + recall == 0:
-        return 0.0
-    return 2 * precision * recall / (precision + recall)
-
-
-def _matrice_au_seuil(y_true: pd.Series, probabilities, seuil: float) -> np.ndarray:
-    return confusion_matrix(y_true, (probabilities >= seuil).astype(int))
-
-
 def _metrics_au_seuil(
     y_true: pd.Series, probabilities, seuil: float
 ) -> dict[str, float]:
-    return classification_metrics(_matrice_au_seuil(y_true, probabilities, seuil))
+    return classification_metrics(confusion_at_threshold(y_true, probabilities, seuil))
 
 
 def tune_baseline_threshold(*, objectif: str = OBJECTIF, echo: bool = True) -> Tuning:
@@ -121,9 +107,9 @@ def tune_baseline_threshold(*, objectif: str = OBJECTIF, echo: bool = True) -> T
 
     def objective(trial: optuna.Trial) -> float:
         seuil = trial.suggest_float("seuil", SEUILS[0], SEUILS[-1], step=PAS_SEUIL)
-        matrice = _matrice_au_seuil(split.y_validation, proba_validation, seuil)
+        matrice = confusion_at_threshold(split.y_validation, proba_validation, seuil)
         metrics = classification_metrics(matrice)
-        score = _score(metrics, objectif)
+        score = objective_score(metrics, objectif)
 
         # Un run independant par seuil : ils se comparent directement dans
         # MLflow, sans run parent pour les regrouper.
@@ -150,7 +136,9 @@ def tune_baseline_threshold(*, objectif: str = OBJECTIF, echo: bool = True) -> T
                 ),
                 "matrice_confusion_validation.png",
             )
-            _log_visuels_shap(model, split.X_validation, "validation", seuil)
+            log_shap_figures(
+                model, split.X_validation, contexte=f"validation, seuil {seuil:g}"
+            )
 
         essais.append({"seuil": seuil, "score": score, **metrics})
         return score
@@ -159,7 +147,7 @@ def tune_baseline_threshold(*, objectif: str = OBJECTIF, echo: bool = True) -> T
     # exhaustivement plutot que de l'echantillonner.
     etude = optuna.create_study(
         direction="maximize",
-        sampler=optuna.samplers.GridSampler({"seuil": SEUILS}),
+        sampler=optuna.samplers.GridSampler({"seuil": SEUILS}, seed=RANDOM_STATE),
     )
     etude.optimize(objective, n_trials=len(SEUILS))
 
@@ -167,7 +155,7 @@ def tune_baseline_threshold(*, objectif: str = OBJECTIF, echo: bool = True) -> T
 
     # Le test, jamais utilise jusqu'ici, mesure le couple modele + seuil.
     proba_test = model.predict_proba(split.X_test)[:, 1]
-    matrice_test = _matrice_au_seuil(split.y_test, proba_test, seuil)
+    matrice_test = confusion_at_threshold(split.y_test, proba_test, seuil)
     metrics_test = classification_metrics(matrice_test)
     metrics_test["auc"] = roc_auc_score(split.y_test, proba_test)
 
@@ -191,7 +179,7 @@ def tune_baseline_threshold(*, objectif: str = OBJECTIF, echo: bool = True) -> T
             ),
             "matrice_confusion_test.png",
         )
-        _log_visuels_shap(model, split.X_test, "test", seuil)
+        log_shap_figures(model, split.X_test, contexte=f"test, seuil {seuil:g}")
         mlflow_tracking.log_model(model, "modele", input_example=split.X_train.head(5))
 
     resultat = Tuning(
@@ -207,46 +195,22 @@ def tune_baseline_threshold(*, objectif: str = OBJECTIF, echo: bool = True) -> T
     return resultat
 
 
-def _log_visuels_shap(model, X, jeu: str, seuil: float) -> None:
-    """Attache au run en cours les deux lectures des contributions SHAP.
-
-    Le modele est le meme d'un seuil a l'autre : ces figures sont donc
-    identiques dans tous les runs. Elles y sont malgre tout, pour qu'un run
-    consulte seul porte l'explication du modele qu'il mesure.
-    """
-    mlflow_tracking.log_figure(
-        shap_bar_figure(
-            model,
-            X,
-            titre=f"SHAP — importance globale ({jeu}, seuil {seuil:g})",
-            max_features=None,
-        ),
-        "shap_importance_globale.png",
-    )
-    mlflow_tracking.log_figure(
-        shap_summary_figure(
-            model, X, titre=f"SHAP — effet par client ({jeu}, seuil {seuil:g})"
-        ),
-        "shap_effet_par_client.png",
-    )
-
-
 def _log(resultat: Tuning, objectif: str) -> None:
     print(
-        f"\n[SEUIL RETENU] {resultat.seuil:.4f}  "
-        f"({objectif} = {resultat.score_validation:.4f} en validation)"
+        f"\n[SEUIL RETENU] {resultat.seuil:.2f}  "
+        f"({objectif} = {resultat.score_validation:.2f} en validation)"
     )
 
     print("\n[PERFORMANCE] sur le jeu de test, au seuil retenu")
     for nom, valeur in resultat.metrics_test.items():
-        print(f"  {nom:<21} {valeur:.4f}")
+        print(f"  {nom:<21} {valeur:.2f}")
 
     print("\n[TOUS LES SEUILS TESTES]")
     print(f"  {'seuil':>7} {'score':>7} {'recall':>8} {'precision':>10} {'FPR':>7}")
     for _, ligne in resultat.essais.sort_values("seuil").iterrows():
         print(
-            f"  {ligne['seuil']:>7.4f} {ligne['score']:>7.4f} {ligne['recall']:>8.4f} "
-            f"{ligne['precision']:>10.4f} {ligne['false_positive_rate']:>7.4f}"
+            f"  {ligne['seuil']:>7.2f} {ligne['score']:>7.2f} {ligne['recall']:>8.2f} "
+            f"{ligne['precision']:>10.2f} {ligne['false_positive_rate']:>7.2f}"
         )
 
     print(f"\n  runs enregistres dans {mlflow_tracking.TRACKING_DB} (uv run mlflow ui)")

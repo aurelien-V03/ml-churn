@@ -7,7 +7,8 @@ docs/                       Données sources (CSV) et énoncé du cas d'usage
 mlflow.db, mlartifacts/     Suivi des expérimentations (généré)
 
 artifacts/                  Modèles entraînés, versionnés dans git
-└── baseline/               Un dossier par modèle
+├── baseline/               Un dossier par modèle
+└── final/
     └── AAAA-MM-JJ/         Un dossier par jour d'entraînement
         ├── *.joblib        Le modèle sérialisé
         ├── *.json          Versions des bibliothèques, seuil, features, métriques
@@ -24,7 +25,8 @@ src/
 │       ├── common/         Gold, découpage, métriques, figures, SHAP, sauvegarde
 │       │   └── tracking/   Suivi MLflow, commun à tous les modèles
 │       ├── classification/ Prédiction du churn (cible `churn`)
-│       │   └── baseline/   Régression logistique + recherche de seuil
+│       │   ├── baseline/   Régression logistique + recherche de seuil
+│       │   └── final/      XGBoost + recherche d'hyperparamètres
 │       └── regression/     Valeur vie client (cible `valeur_vie_client_eur`)
 │           └── baseline/
 └── visualization/          Hors package, importé via `sys.path`

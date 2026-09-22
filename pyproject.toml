@@ -25,6 +25,7 @@ dependencies = [
     "shap>=0.52.0",
     "sqlalchemy>=2.0.52",
     "typer>=0.27.2",
+    "xgboost>=3.4.1",
 ]
 
 [project.scripts]

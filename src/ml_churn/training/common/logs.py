@@ -34,7 +34,7 @@ def log_metrics(metrics: dict[str, float]) -> None:
     """Metriques du jeu de test, avec le rappel de leur formule."""
     print("\n[PERFORMANCE] sur le jeu de test")
     for nom, value in metrics.items():
-        print(f"  {nom:<21} {value:.4f}   {FORMULES[nom]}")
+        print(f"  {nom:<21} {value:.2f}   {FORMULES[nom]}")
 
 
 def log_confusion_matrix(matrix: np.ndarray) -> None:
@@ -58,13 +58,24 @@ def log_confusion_matrix(matrix: np.ndarray) -> None:
 
 
 def log_feature_weights(
-    weights: pd.Series, *, titre: str = "COEFFICIENTS", nombre: int = 10
+    weights: pd.Series,
+    *,
+    titre: str = "COEFFICIENTS",
+    nombre: int = 10,
+    direction: bool = True,
 ) -> None:
-    """Features les plus influentes, de la plus forte a la plus faible."""
+    """Features les plus influentes, de la plus forte a la plus faible.
+
+    `direction=False` pour les importances d'un modele a arbres : toujours
+    positives, elles disent l'intensite mais pas le sens de l'effet.
+    """
     print(f"\n[{titre}] les {nombre} plus influents")
     for nom, value in weights.head(nombre).items():
-        direction = "augmente" if value > 0 else "diminue "
-        print(f"  {nom:<30} {value:+.4f}  ({direction} le risque)")
+        if not direction:
+            print(f"  {nom:<30} {value:.2f}")
+            continue
+        sens = "augmente" if value > 0 else "diminue "
+        print(f"  {nom:<30} {value:+.2f}  ({sens} le risque)")
 
 
 def log_classification_training(
@@ -78,9 +89,10 @@ def log_classification_training(
     matrix: np.ndarray,
     weights: pd.Series,
     weights_titre: str = "COEFFICIENTS",
+    weights_direction: bool = True,
 ) -> None:
     """Bilan complet d'un entrainement de classification."""
     log_dataset(df, features, exclusions, tailles, y_test)
     log_metrics(metrics)
     log_confusion_matrix(matrix)
-    log_feature_weights(weights, titre=weights_titre)
+    log_feature_weights(weights, titre=weights_titre, direction=weights_direction)

@@ -2,25 +2,26 @@
 
 from __future__ import annotations
 
-import matplotlib
-
-# Backend sans fenetre : les figures sont enregistrees, jamais affichees.
-matplotlib.use("Agg")
-
-import matplotlib.pyplot as plt
 import numpy as np
+from matplotlib.figure import Figure
+
+# Les figures sont construites sans passer par pyplot : une bibliotheque ne
+# doit toucher ni au backend global -- ce que faisait `matplotlib.use("Agg")`,
+# au prix de l'affichage dans le notebook -- ni au registre des figures
+# ouvertes. Elles sont enregistrees par l'appelant, jamais affichees ici.
 
 LIBELLES = ("reste", "churn")
 SIGLES = (("TN", "FP"), ("FN", "TP"))
 
 
-def confusion_matrix_figure(matrix: np.ndarray, *, titre: str) -> plt.Figure:
+def confusion_matrix_figure(matrix: np.ndarray, *, titre: str) -> Figure:
     """Matrice de confusion en damier, chaque case annotee de son sigle.
 
     Les cases sont colorees par leur part de la ligne (et non du total) : sans
     cela, sur un jeu desequilibre, seuls les vrais negatifs ressortiraient.
     """
-    figure, axes = plt.subplots(figsize=(6, 5))
+    figure = Figure(figsize=(6, 5))
+    axes = figure.subplots()
     parts = matrix / matrix.sum(axis=1, keepdims=True)
     axes.imshow(parts, cmap="Blues", vmin=0, vmax=1)
 

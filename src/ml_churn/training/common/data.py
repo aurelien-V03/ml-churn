@@ -105,3 +105,25 @@ def split_train_validation_test(X: pd.DataFrame, y: pd.Series) -> Split:
         y_validation=y_validation,
         y_test=y_test,
     )
+
+
+def training_extracts(
+    df: pd.DataFrame, features: list[str], split: Split, *, target: str
+) -> dict[str, pd.DataFrame]:
+    """Extrait gold reellement consomme, un DataFrame par jeu de donnees.
+
+    Ecrire les trois jeux separement fige le decoupage : sans cela, rejouer
+    l'entrainement depuis l'extrait supposerait que `train_test_split` decoupe
+    toujours a l'identique, ce qui n'est vrai qu'a version de scikit-learn
+    constante. `client_id` sert a remonter a la ligne source, pas a predire.
+    """
+    colonnes = [colonne for colonne in ("client_id", target) if colonne in df.columns]
+
+    return {
+        jeu: df.loc[indices, [*colonnes, *features]]
+        for jeu, indices in (
+            ("train", split.X_train.index),
+            ("validation", split.X_validation.index),
+            ("test", split.X_test.index),
+        )
+    }

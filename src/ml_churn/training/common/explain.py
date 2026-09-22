@@ -15,23 +15,34 @@ import pandas as pd
 import shap
 from sklearn.pipeline import Pipeline
 
+from ml_churn.training.common.tracking import mlflow_tracking
+
 # Au-dela, le graphique devient illisible ; SHAP garde les plus contributives.
 # `max_features=None` les affiche toutes.
 MAX_FEATURES = 20
 
 
 def shap_values(model: Pipeline, X: pd.DataFrame) -> shap.Explanation:
-    """Contributions SHAP exactes du modele sur `X`.
+    """Contributions SHAP exactes du modele sur `X`, quel que soit son type.
 
-    `LinearExplainer` calcule les valeurs exactes pour un modele lineaire, sans
-    l'echantillonnage des explainers generiques. Sans `max_samples`, SHAP
-    n'echantillonnerait que 100 lignes pour estimer la moyenne de reference ;
-    ici le jeu tient en memoire, autant la calculer sur tout.
+    Deux explainers exacts selon le modele, aucun echantillonnage dans les
+    deux cas :
+
+    - `TreeExplainer` pour les modeles a arbres (XGBoost). Il parcourt les
+      arbres plutot que de perturber les donnees, d'ou l'absence de jeu de
+      reference -- que XGBoost refuserait de toute facon des qu'un decoupage
+      categoriel apparait.
+    - `LinearExplainer` sinon. Sans `max_samples`, SHAP n'echantillonnerait
+      que 100 lignes pour estimer la moyenne de reference ; ici le jeu tient
+      en memoire, autant la calculer sur tout.
     """
     estimateur = model[-1] if isinstance(model, Pipeline) else model
     donnees = (
         model[:-1].transform(X) if isinstance(model, Pipeline) and len(model) > 1 else X
     )
+
+    if shap.explainers.Tree.supports_model_with_masker(estimateur, None):
+        return shap.TreeExplainer(estimateur)(donnees)
 
     reference = shap.maskers.Independent(donnees, max_samples=len(donnees))
     return shap.LinearExplainer(estimateur, reference)(donnees)
@@ -109,12 +120,32 @@ def shap_bar_figure(
     return _mettre_en_forme(plt.gcf(), titre=titre, lignes=lignes, largeur=8)
 
 
+def log_shap_figures(model: Pipeline, X: pd.DataFrame, *, contexte: str) -> None:
+    """Attache au run MLflow en cours les deux lectures des contributions SHAP.
+
+    `contexte` situe les figures dans le run : jeu de donnees, seuil, essai.
+    """
+    mlflow_tracking.log_figure(
+        shap_bar_figure(
+            model,
+            X,
+            titre=f"SHAP — importance globale ({contexte})",
+            max_features=None,
+        ),
+        "shap_importance_globale.png",
+    )
+    mlflow_tracking.log_figure(
+        shap_summary_figure(model, X, titre=f"SHAP — effet par client ({contexte})"),
+        "shap_effet_par_client.png",
+    )
+
+
 def display_figure(figure: plt.Figure) -> None:
     """Affiche la figure dans un notebook ; sans effet en ligne de commande.
 
     Le PNG est rendu ici puis passe a IPython plutot que de laisser le notebook
-    afficher l'objet figure : `common.plots` bascule matplotlib sur le backend
-    Agg des son import, ce qui neutralise l'affichage automatique.
+    afficher l'objet figure : l'affichage automatique depend du backend actif,
+    que rien ne garantit dans un notebook ayant deja importe d'autres modules.
     """
     try:
         from IPython.core.getipython import get_ipython

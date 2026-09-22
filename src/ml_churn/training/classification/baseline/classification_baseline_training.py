@@ -19,20 +19,19 @@ from pathlib import Path
 import pandas as pd
 import typer
 from sklearn.linear_model import LogisticRegression
-from sklearn.metrics import confusion_matrix, roc_auc_score
 from sklearn.pipeline import Pipeline
 
 from ml_churn.training.common.artifacts import save_model
 from ml_churn.training.common.data import (
     EXCLUSIONS_COMMUNES,
     RANDOM_STATE,
-    Split,
     feature_columns,
     load_gold,
     split_train_validation_test,
+    training_extracts,
 )
 from ml_churn.training.common.logs import log_classification_training
-from ml_churn.training.common.metrics import classification_metrics
+from ml_churn.training.common.metrics import evaluate_at_threshold
 
 TARGET = "churn"
 
@@ -66,8 +65,9 @@ class Result:
     metrics: dict[str, float]
     confusion: list[list[int]]
     coefficients: pd.Series = field(repr=False)
-    # Conserve pour expliquer le modele apres coup (SHAP) sans refaire le split.
+    # Conserves pour reevaluer ou expliquer le modele sans refaire le split.
     X_test: pd.DataFrame = field(repr=False, default=None)
+    y_test: pd.Series = field(repr=False, default=None)
 
 
 def build_baseline_pipeline() -> Pipeline:
@@ -98,28 +98,6 @@ def build_baseline_pipeline() -> Pipeline:
     )
 
 
-def training_extracts(
-    df: pd.DataFrame, features: list[str], split: Split
-) -> dict[str, pd.DataFrame]:
-    """Extrait gold reellement consomme, un DataFrame par jeu de donnees.
-
-    Ecrire les trois jeux separement fige le decoupage : sans cela, rejouer
-    l'entrainement depuis l'extrait supposerait que `train_test_split` decoupe
-    toujours a l'identique, ce qui n'est vrai qu'a version de scikit-learn
-    constante. `client_id` sert a remonter a la ligne source, pas a predire.
-    """
-    colonnes = [colonne for colonne in ("client_id", TARGET) if colonne in df.columns]
-
-    return {
-        jeu: df.loc[indices, [*colonnes, *features]]
-        for jeu, indices in (
-            ("train", split.X_train.index),
-            ("validation", split.X_validation.index),
-            ("test", split.X_test.index),
-        )
-    }
-
-
 def train_classification_baseline(
     *, seuil: float = SEUIL_DEFAUT, echo: bool = True
 ) -> Result:
@@ -138,14 +116,9 @@ def train_classification_baseline(
     model = build_baseline_pipeline()
     model.fit(split.X_train, split.y_train)
 
-    probabilities = model.predict_proba(split.X_test)[:, 1]
-    predictions = (probabilities >= seuil).astype(int)
-
-    matrix = confusion_matrix(split.y_test, predictions)
-    metrics = classification_metrics(matrix)
-    # L'AUC se calcule sur les probabilites, pas sur la matrice : elle ne
-    # depend d'aucun seuil de decision.
-    metrics["auc"] = roc_auc_score(split.y_test, probabilities)
+    metrics, matrix = evaluate_at_threshold(
+        model, split.X_test, split.y_test, seuil=seuil
+    )
 
     coefficients = pd.Series(
         model.named_steps["model"].coef_[0], index=features
@@ -153,7 +126,7 @@ def train_classification_baseline(
 
     chemin = save_model(
         model,
-        datasets=training_extracts(df, features, split),
+        datasets=training_extracts(df, features, split, target=TARGET),
         dossier=ARTIFACTS_DOSSIER,
         nom=ARTIFACTS_NOM,
         metadonnees={
@@ -190,6 +163,7 @@ def train_classification_baseline(
         confusion=matrix.tolist(),
         coefficients=coefficients,
         X_test=split.X_test,
+        y_test=split.y_test,
     )
 
 
