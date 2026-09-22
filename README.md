@@ -97,7 +97,8 @@ Les faux positifs sont moins grave que les faux négatifs car ils impliquent pri
 La resiliation est à ces raisons :
 - satisfaction client
     - support de qualité (peu de demande et traitement rapide) : tickets_support_90j / delai_reponse_support_h 
-    - services offert sont utilisés (correspond à la demande de l'utilisateur) : fonctionnalites_utilisees 
+    - services offert sont utilisés et il y a une part importante d'utilisateur actif (correspond à la demande de l'utilisateur) : fonctionnalites_utilisees / taux_adoption_pct 
+    - appreciation du produit : csat
 - Bon payeur
     - grosse entreprise : taille_entreprise 
     - pas de retard de paiement : retards_paiement_12m 

@@ -1,6 +1,6 @@
 {
   "model": "classification_baseline",
-  "saved_at": "2026-09-22T11:44:39+02:00",
+  "saved_at": "2026-09-22T13:37:42+02:00",
   "versions": {
     "python": "3.13",
     "scikit-learn": "1.9.0",
