@@ -21,7 +21,7 @@ import numpy as np
 import optuna
 import pandas as pd
 import typer
-from sklearn.metrics import confusion_matrix
+from sklearn.metrics import confusion_matrix, roc_auc_score
 
 from ml_churn.training.classification.baseline.classification_baseline_training import (
     EXCLUSIONS,
@@ -100,6 +100,11 @@ def tune_baseline_threshold(*, objectif: str = OBJECTIF, echo: bool = True) -> T
     model = build_baseline_pipeline().fit(split.X_train, split.y_train)
     proba_validation = model.predict_proba(split.X_validation)[:, 1]
 
+    # L'AUC se calcule sur les probabilites : elle ne depend d'aucun seuil et
+    # vaut donc la meme chose dans les onze runs. Elle y figure pour qu'un run
+    # porte la performance du modele autant que celle de son seuil.
+    auc_validation = roc_auc_score(split.y_validation, proba_validation)
+
     if echo:
         print(
             f"[RECHERCHE] seuil, objectif '{objectif}', {len(SEUILS)} seuils "
@@ -134,7 +139,9 @@ def tune_baseline_threshold(*, objectif: str = OBJECTIF, echo: bool = True) -> T
             },
             tags={"etape": "tuning", "cible": TARGET},
         ):
-            mlflow_tracking.log_metrics({**metrics, "score": score})
+            mlflow_tracking.log_metrics(
+                {**metrics, "auc": auc_validation, "score": score}
+            )
             # La matrice change a chaque seuil : c'est ce que le run illustre.
             mlflow_tracking.log_figure(
                 confusion_matrix_figure(
@@ -162,6 +169,7 @@ def tune_baseline_threshold(*, objectif: str = OBJECTIF, echo: bool = True) -> T
     proba_test = model.predict_proba(split.X_test)[:, 1]
     matrice_test = _matrice_au_seuil(split.y_test, proba_test, seuil)
     metrics_test = classification_metrics(matrice_test)
+    metrics_test["auc"] = roc_auc_score(split.y_test, proba_test)
 
     # Le modele et sa performance sur le test sont rattaches au run du seuil
     # retenu, celui qui sera reutilise.
