@@ -6,6 +6,13 @@ docker-compose.yml          PostgreSQL + pgAdmin
 docs/                       Données sources (CSV) et énoncé du cas d'usage
 mlflow.db, mlartifacts/     Suivi des expérimentations (généré)
 
+artifacts/                  Modèles entraînés, versionnés dans git
+└── baseline/               Un dossier par modèle
+    └── AAAA-MM-JJ/         Un dossier par jour d'entraînement
+        ├── *.joblib        Le modèle sérialisé
+        ├── *.json          Versions des bibliothèques, seuil, features, métriques
+        └── *_train.csv     Extraits gold consommés (train / validation / test)
+
 src/
 ├── ml_churn/               Package installé (`uv run python -m ml_churn...`)
 │   ├── ingestion/          Médaillon : CSV → bronze → silver → gold
@@ -14,7 +21,7 @@ src/
 │   │   ├── models/         Modèles SQLAlchemy, un fichier par couche
 │   │   └── scripts/        Un script par couche, plus `ingest_all`
 │   └── training/
-│       ├── common/         Chargement gold, découpage, métriques, logs, figures
+│       ├── common/         Gold, découpage, métriques, figures, SHAP, sauvegarde
 │       │   └── tracking/   Suivi MLflow, commun à tous les modèles
 │       ├── classification/ Prédiction du churn (cible `churn`)
 │       │   └── baseline/   Régression logistique + recherche de seuil
@@ -89,11 +96,11 @@ Les faux positifs sont moins grave que les faux négatifs car ils impliquent pri
 
 La resiliation est à ces raisons :
 - satisfaction client
-    - support de qualité (peu de demande et traitement rapide)
-    - services offert sont utilisés (correspond à la demande de l'utilisateur)
+    - support de qualité (peu de demande et traitement rapide) : tickets_support_90j / delai_reponse_support_h 
+    - services offert sont utilisés (correspond à la demande de l'utilisateur) : fonctionnalites_utilisees 
 - Bon payeur
-    - grosse entreprise
-    - pas de retard de paiement    
+    - grosse entreprise : taille_entreprise 
+    - pas de retard de paiement : retards_paiement_12m 
 
 
 
@@ -385,6 +392,9 @@ Modèles disponibles :
 - regression linéaire : regression
 - regression logistique : classification
 
+Hypothese confirmation
+    - La support impacte pas mal la prediction
+
 ### Choix des features
 
 Data leakage :
@@ -395,5 +405,5 @@ Il s'agit d'un dataset déséquilibré (28%)
 
 # 6 TODO
 
-- bien penser a versionner les modeles (avec leurs donnes)
+- bien penser a versionner les modeles avec leurs donnes
 - ajouter makefile

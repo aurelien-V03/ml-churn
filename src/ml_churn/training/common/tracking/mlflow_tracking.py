@@ -23,6 +23,7 @@ from typing import Any
 # Doit preceder l'import de mlflow : le hint de l'agent est emis au chargement.
 os.environ.setdefault("MLFLOW_DISABLE_AGENT_HINT", "1")
 
+import matplotlib.pyplot as plt
 import mlflow
 
 
@@ -103,8 +104,14 @@ def log_metrics(metrics: dict[str, float], *, step: int | None = None) -> None:
 
 
 def log_figure(figure: Any, nom: str) -> None:
-    """Enregistre une figure matplotlib comme artefact du run en cours."""
+    """Enregistre une figure matplotlib comme artefact du run en cours.
+
+    La figure est fermee ensuite : une fois dans MLflow elle n'a plus d'usage,
+    et une figure laissee ouverte reste la figure courante de matplotlib, dans
+    laquelle les graphiques traces plus tard viendraient se superposer.
+    """
     mlflow.log_figure(figure, nom)
+    plt.close(figure)
 
 
 def log_model(model: Any, nom: str, *, input_example: Any = None) -> None:

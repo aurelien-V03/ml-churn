@@ -25,6 +25,7 @@ from sklearn.metrics import confusion_matrix
 
 from ml_churn.training.classification.baseline.classification_baseline_training import (
     EXCLUSIONS,
+    EXPERIMENT,
     TARGET,
     build_baseline_pipeline,
 )
@@ -33,11 +34,10 @@ from ml_churn.training.common.data import (
     load_gold,
     split_train_validation_test,
 )
+from ml_churn.training.common.explain import shap_bar_figure, shap_summary_figure
 from ml_churn.training.common.metrics import classification_metrics
 from ml_churn.training.common.plots import confusion_matrix_figure
 from ml_churn.training.common.tracking import mlflow_tracking
-
-EXPERIMENT = "classification-baseline"
 
 # Nom des runs MLflow, suffixe par le seuil teste.
 RUN_PREFIX = "classification_base_model_threshold"
@@ -143,6 +143,7 @@ def tune_baseline_threshold(*, objectif: str = OBJECTIF, echo: bool = True) -> T
                 ),
                 "matrice_confusion_validation.png",
             )
+            _log_visuels_shap(model, split.X_validation, "validation", seuil)
 
         essais.append({"seuil": seuil, "score": score, **metrics})
         return score
@@ -182,6 +183,7 @@ def tune_baseline_threshold(*, objectif: str = OBJECTIF, echo: bool = True) -> T
             ),
             "matrice_confusion_test.png",
         )
+        _log_visuels_shap(model, split.X_test, "test", seuil)
         mlflow_tracking.log_model(model, "modele", input_example=split.X_train.head(5))
 
     resultat = Tuning(
@@ -195,6 +197,30 @@ def tune_baseline_threshold(*, objectif: str = OBJECTIF, echo: bool = True) -> T
         _log(resultat, objectif)
 
     return resultat
+
+
+def _log_visuels_shap(model, X, jeu: str, seuil: float) -> None:
+    """Attache au run en cours les deux lectures des contributions SHAP.
+
+    Le modele est le meme d'un seuil a l'autre : ces figures sont donc
+    identiques dans tous les runs. Elles y sont malgre tout, pour qu'un run
+    consulte seul porte l'explication du modele qu'il mesure.
+    """
+    mlflow_tracking.log_figure(
+        shap_bar_figure(
+            model,
+            X,
+            titre=f"SHAP — importance globale ({jeu}, seuil {seuil:g})",
+            max_features=None,
+        ),
+        "shap_importance_globale.png",
+    )
+    mlflow_tracking.log_figure(
+        shap_summary_figure(
+            model, X, titre=f"SHAP — effet par client ({jeu}, seuil {seuil:g})"
+        ),
+        "shap_effet_par_client.png",
+    )
 
 
 def _log(resultat: Tuning, objectif: str) -> None:

@@ -14,6 +14,7 @@ Usage :
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from pathlib import Path
 
 import pandas as pd
 import typer
@@ -21,9 +22,11 @@ from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import confusion_matrix, roc_auc_score
 from sklearn.pipeline import Pipeline
 
+from ml_churn.training.common.artifacts import save_model
 from ml_churn.training.common.data import (
     EXCLUSIONS_COMMUNES,
     RANDOM_STATE,
+    Split,
     feature_columns,
     load_gold,
     split_train_validation_test,
@@ -32,6 +35,9 @@ from ml_churn.training.common.logs import log_classification_training
 from ml_churn.training.common.metrics import classification_metrics
 
 TARGET = "churn"
+
+# Experience MLflow commune a l'entrainement et a la recherche de seuil.
+EXPERIMENT = "classification-baseline"
 
 # Seuil a partir duquel une probabilite devient une alerte. 0.5 est le defaut
 # de scikit-learn ; `classification_baseline_tuning.py` cherche le meilleur.
@@ -44,16 +50,24 @@ EXCLUSIONS: dict[str, str] = {
 }
 
 
+# Sous-dossier d'`artifacts/` et prefixe des fichiers enregistres.
+ARTIFACTS_DOSSIER = "baseline"
+ARTIFACTS_NOM = "classification_baseline"
+
+
 @dataclass
 class Result:
     """Modele entraine et metriques mesurees sur le jeu de test."""
 
     model: Pipeline
+    chemin: Path
     seuil: float
     features: list[str]
     metrics: dict[str, float]
     confusion: list[list[int]]
     coefficients: pd.Series = field(repr=False)
+    # Conserve pour expliquer le modele apres coup (SHAP) sans refaire le split.
+    X_test: pd.DataFrame = field(repr=False, default=None)
 
 
 def build_baseline_pipeline() -> Pipeline:
@@ -82,6 +96,28 @@ def build_baseline_pipeline() -> Pipeline:
             ),
         ]
     )
+
+
+def training_extracts(
+    df: pd.DataFrame, features: list[str], split: Split
+) -> dict[str, pd.DataFrame]:
+    """Extrait gold reellement consomme, un DataFrame par jeu de donnees.
+
+    Ecrire les trois jeux separement fige le decoupage : sans cela, rejouer
+    l'entrainement depuis l'extrait supposerait que `train_test_split` decoupe
+    toujours a l'identique, ce qui n'est vrai qu'a version de scikit-learn
+    constante. `client_id` sert a remonter a la ligne source, pas a predire.
+    """
+    colonnes = [colonne for colonne in ("client_id", TARGET) if colonne in df.columns]
+
+    return {
+        jeu: df.loc[indices, [*colonnes, *features]]
+        for jeu, indices in (
+            ("train", split.X_train.index),
+            ("validation", split.X_validation.index),
+            ("test", split.X_test.index),
+        )
+    }
 
 
 def train_classification_baseline(
@@ -115,6 +151,20 @@ def train_classification_baseline(
         model.named_steps["model"].coef_[0], index=features
     ).sort_values(key=abs, ascending=False)
 
+    chemin = save_model(
+        model,
+        datasets=training_extracts(df, features, split),
+        dossier=ARTIFACTS_DOSSIER,
+        nom=ARTIFACTS_NOM,
+        metadonnees={
+            "threshold": seuil,
+            "target": TARGET,
+            "features": features,
+            "sizes": split.tailles,
+            "test_metrics": {nom: round(valeur, 4) for nom, valeur in metrics.items()},
+        },
+    )
+
     if echo:
         print(f"[SEUIL] {seuil:.2f}")
         log_classification_training(
@@ -128,13 +178,18 @@ def train_classification_baseline(
             weights=coefficients,
         )
 
+    if echo:
+        print(f"\n[MODELE ENREGISTRE] {chemin.relative_to(Path.cwd())}")
+
     return Result(
         model=model,
+        chemin=chemin,
         seuil=seuil,
         features=features,
         metrics=metrics,
         confusion=matrix.tolist(),
         coefficients=coefficients,
+        X_test=split.X_test,
     )
 
 
