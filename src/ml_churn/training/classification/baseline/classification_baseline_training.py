@@ -35,11 +35,9 @@ from ml_churn.training.common.metrics import evaluate_at_threshold
 
 TARGET = "churn"
 
-# Experience MLflow commune a l'entrainement et a la recherche de seuil.
-EXPERIMENT = "classification-baseline"
-
-# Seuil a partir duquel une probabilite devient une alerte. 0.5 est le defaut
-# de scikit-learn ; `classification_baseline_tuning.py` cherche le meilleur.
+# Seuil a partir duquel une probabilite devient une alerte : le defaut de
+# scikit-learn. La baseline sert de point de comparaison, l'arbitrage entre
+# churners manques et fausses alertes se joue sur le modele final.
 SEUIL_DEFAUT = 0.5
 
 # La cible du modele de regression n'est pas une feature de classification.

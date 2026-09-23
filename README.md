@@ -25,7 +25,7 @@ src/
 │       ├── common/         Gold, découpage, métriques, figures, SHAP, sauvegarde
 │       │   └── tracking/   Suivi MLflow, commun à tous les modèles
 │       ├── classification/ Prédiction du churn (cible `churn`)
-│       │   ├── baseline/   Régression logistique + recherche de seuil
+│       │   ├── baseline/   Régression logistique, seuil fixe à 0.5
 │       │   └── final/      XGBoost + recherche d'hyperparamètres
 │       └── regression/     Valeur vie client (cible `valeur_vie_client_eur`)
 │           └── baseline/

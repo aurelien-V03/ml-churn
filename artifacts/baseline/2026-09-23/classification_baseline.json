@@ -1,6 +1,6 @@
 {
   "model": "classification_baseline",
-  "saved_at": "2026-09-23T10:43:10+02:00",
+  "saved_at": "2026-09-23T13:51:43+02:00",
   "versions": {
     "python": "3.13",
     "scikit-learn": "1.9.0",
@@ -86,11 +86,6 @@
     "false_positive_rate": 0.1889,
     "precision": 0.6222,
     "auc": 0.8773
-  },
-  "carbon": {
-    "co2_mg": 0.2752,
-    "energy_mwh": 4.9109,
-    "duration_s": 0.0208
   },
   "datasets": {
     "train": {
