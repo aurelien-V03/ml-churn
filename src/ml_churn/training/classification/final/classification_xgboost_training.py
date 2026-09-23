@@ -51,9 +51,25 @@ EXCLUSIONS: dict[str, str] = {
     "valeur_vie_client_eur": "cible du modele de regression",
 }
 
-# Sous-dossier d'`artifacts/` et prefixe des fichiers enregistres.
+# Sous-dossier d'`artifacts/` et prefixe des fichiers enregistres. Le modele
+# reduit a le sien : les deux variantes cohabitent dans le dossier du jour.
 ARTIFACTS_DOSSIER = "final"
 ARTIFACTS_NOM = "classification_xgboost"
+ARTIFACTS_NOM_REDUIT = "classification_xgboost_reduit"
+
+# Colonnes categorielles dont le modele reduit se passe : leur contribution SHAP
+# est negligeable dans le modele complet. `exclusions_sans` retire toutes leurs
+# modalites one-hot.
+COLONNES_RETIREES = (
+    "groupe_experimentation",
+    "code_datacenter",
+    "couleur_theme_interface",
+    "plan",
+    "taille_entreprise",
+    "pays",
+    "jour_souscription",
+    "secteur",
+)
 
 
 def exclusions_sans(colonnes: Sequence[str]) -> dict[str, str]:
