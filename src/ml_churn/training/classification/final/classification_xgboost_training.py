@@ -51,11 +51,9 @@ EXCLUSIONS: dict[str, str] = {
     "valeur_vie_client_eur": "cible du modele de regression",
 }
 
-# Sous-dossier d'`artifacts/` et prefixe des fichiers enregistres. Le modele
-# reduit a le sien : les deux variantes cohabitent dans le dossier du jour.
+# Sous-dossier d'`artifacts/` et prefixe des fichiers enregistres.
 ARTIFACTS_DOSSIER = "final"
 ARTIFACTS_NOM = "classification_xgboost"
-ARTIFACTS_NOM_REDUIT = "classification_xgboost_reduit"
 
 # Colonnes categorielles dont le modele reduit se passe : leur contribution SHAP
 # est negligeable dans le modele complet. `exclusions_sans` retire toutes leurs
@@ -112,7 +110,8 @@ class Result:
     """Modele entraine et metriques mesurees sur le jeu de test."""
 
     model: Pipeline
-    chemin: Path
+    # `None` quand l'entrainement n'a pas ete enregistre.
+    chemin: Path | None
     seuil: float
     hyperparametres: dict[str, Any]
     features: list[str]
@@ -176,13 +175,15 @@ def train_classification_xgboost(
     hyperparametres: dict[str, Any] | None = None,
     exclusions: dict[str, str] | None = None,
     nom: str = ARTIFACTS_NOM,
+    enregistrer: bool = True,
     echo: bool = True,
 ) -> Result:
     """Entraine XGBoost et l'evalue sur un jeu de test tenu a l'ecart.
 
-    `exclusions` remplace la liste par defaut des colonnes ecartees, `nom`
-    distingue les fichiers enregistres : de quoi entrainer une variante sans
-    ecraser le modele de reference.
+    `exclusions` remplace la liste par defaut des colonnes ecartees et `nom`
+    prefixe les fichiers ecrits. `enregistrer=False` mesure un modele sans
+    rien deposer dans `artifacts/` : utile pour comparer des variantes sans
+    encombrer le dossier du jour.
     """
     retenues = exclusions or EXCLUSIONS
     df, features, split = prepare_split(retenues)
@@ -202,19 +203,25 @@ def train_classification_xgboost(
         model.named_steps["model"].feature_importances_, index=features
     ).sort_values(ascending=False)
 
-    chemin = save_model(
-        model,
-        datasets=training_extracts(df, features, split, target=TARGET),
-        dossier=ARTIFACTS_DOSSIER,
-        nom=nom,
-        metadonnees={
-            "threshold": seuil,
-            "target": TARGET,
-            "hyperparameters": retenus,
-            "features": features,
-            "sizes": split.tailles,
-            "test_metrics": {nom: round(valeur, 4) for nom, valeur in metrics.items()},
-        },
+    chemin = (
+        save_model(
+            model,
+            datasets=training_extracts(df, features, split, target=TARGET),
+            dossier=ARTIFACTS_DOSSIER,
+            nom=nom,
+            metadonnees={
+                "threshold": seuil,
+                "target": TARGET,
+                "hyperparameters": retenus,
+                "features": features,
+                "sizes": split.tailles,
+                "test_metrics": {
+                    metrique: round(valeur, 4) for metrique, valeur in metrics.items()
+                },
+            },
+        )
+        if enregistrer
+        else None
     )
 
     if echo:
@@ -236,7 +243,8 @@ def train_classification_xgboost(
             weights_titre="IMPORTANCES",
             weights_direction=False,
         )
-        print(f"\n[MODELE ENREGISTRE] {chemin.relative_to(Path.cwd())}")
+        if chemin is not None:
+            print(f"\n[MODELE ENREGISTRE] {chemin.relative_to(Path.cwd())}")
 
     return Result(
         model=model,

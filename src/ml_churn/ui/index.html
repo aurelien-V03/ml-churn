@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ml-churn — test de l'API</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <h1>ml-churn — test de l'API</h1>
+  <p class="subtitle">Les 24 colonnes attendues par le modèle XGBoost. « Remplir » tire des
+     valeurs au hasard dans l'intervalle observé sur le jeu d'entraînement.</p>
+
+  <div class="status" id="status">
+    <span class="dot" id="dot-health"></span><code>/health</code>
+    <span class="dot" id="dot-ready"></span><code>/ready</code>
+    <span class="status-detail" id="status-detail">vérification…</span>
+  </div>
+
+  <div class="columns">
+    <form id="form" autocomplete="off">
+      <div class="field model">
+        <label for="model">modèle</label>
+        <select id="model" name="model">
+          <option value="xgboost">xgboost</option>
+        </select>
+      </div>
+    </form>
+
+    <aside>
+      <h2>Prédiction</h2>
+      <dl id="result"><dd class="vide">Aucune prédiction pour l'instant.</dd></dl>
+      <p id="error" class="error"></p>
+    </aside>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>

@@ -16,6 +16,9 @@ artifacts/                  Modèles entraînés, versionnés dans git
 
 src/
 ├── ml_churn/               Package installé (`uv run python -m ml_churn...`)
+│   ├── api/                Service FastAPI : /health, /ready, /predict
+│   │   └── data/           Schémas Pydantic des requêtes et réponses
+│   ├── ui/                 Page de test : index.html, style.css, app.js
 │   ├── ingestion/          Médaillon : CSV → bronze → silver → gold
 │   │   ├── db.py           Connexion PostgreSQL
 │   │   ├── logs.py         Format de log commun aux trois couches
@@ -25,7 +28,7 @@ src/
 │       ├── common/         Gold, découpage, métriques, figures, SHAP, sauvegarde
 │       │   └── tracking/   Suivi MLflow, commun à tous les modèles
 │       ├── classification/ Prédiction du churn (cible `churn`)
-│       │   ├── baseline/   Régression logistique + recherche de seuil
+│       │   ├── baseline/   Régression logistique, seuil fixe à 0.5
 │       │   └── final/      XGBoost + recherche d'hyperparamètres
 │       └── regression/     Valeur vie client (cible `valeur_vie_client_eur`)
 │           └── baseline/
@@ -41,6 +44,7 @@ Trois responsabilités séparées :
 | `ingestion/` | Charger et transformer les données, du CSV brut à la table exploitable |
 | `visualization/` | Comprendre les données : distributions, valeurs extrêmes, relations au churn |
 | `training/` | Entraîner et évaluer les modèles, en suivant les runs dans MLflow |
+| `api/` | Servir les modèles entraînés par HTTP, sans jamais réentraîner |
 
 Les scripts sont autonomes, exécutables en ligne de commande comme importables
 depuis le notebook. Le code partagé entre
@@ -407,6 +411,57 @@ Data leakage :
 ## 2. Choic des métriques
 
 Il s'agit d'un dataset déséquilibré (28%)
+
+## 3. API de prédiction
+
+Le service entraîne ses modèles au démarrage, à partir de la couche gold : il
+ne relit rien depuis `artifacts/`. Il dépend donc de PostgreSQL pour démarrer.
+Le seuil et les hyperparamètres retenus par la recherche sont figés en tête de
+`api/registry.py`.
+
+```bash
+uv run uvicorn ml_churn.api.main:app --reload
+```
+
+Page de test sur <http://127.0.0.1:8000/> et documentation interactive sur
+<http://127.0.0.1:8000/docs>.
+
+La page (`ui/index.html`) présente un champ par colonne attendue, un
+bouton **Remplir** qui tire des valeurs au hasard dans l'intervalle observé sur
+le jeu d'entraînement, et un bouton **Prédire** qui appelle `/predict` et
+affiche les quatre champs de la réponse. Elle est servie par l'API elle-même :
+même origine, donc aucune configuration CORS.
+
+| Endpoint | Rôle | Réponse |
+| --- | --- | --- |
+| `GET /health` | Le service répond | `{"status": "ok"}` |
+| `GET /ready` | Les modèles sont chargés | `{"ready": true, "models": ["xgboost"]}`, ou 503 |
+| `POST /predict` | Probabilité de churn d'un client | `{"model", "probability", "threshold", "churn"}` |
+
+`/health` et `/ready` sont distincts comme les sondes Kubernetes : le service
+peut répondre avant d'être capable de prédire, le temps de charger ses modèles.
+
+Le corps de `/predict` porte deux champs, `model` et `data`. Les clés de `data`
+sont les colonnes de la couche gold ; celles que le modèle n'utilise pas sont
+ignorées, une ligne gold complète peut donc être envoyée telle quelle.
+
+```bash
+curl -X POST http://127.0.0.1:8000/predict \
+  -H 'content-type: application/json' \
+  -d '{"model": "xgboost", "data": {"anciennete_mois": 12, "nb_integrations": 0, ...}}'
+```
+
+```json
+{"model": "xgboost", "probability": 0.7498, "threshold": 0.4, "churn": true}
+```
+
+Codes d'erreur : **404** si le modèle demandé n'existe pas (avec la liste des
+modèles disponibles), **422** s'il manque des colonnes (avec leur liste) ou si
+une valeur n'est pas numérique.
+
+Les modèles exposés sont déclarés dans `MODELES`, à la fin de
+`api/registry.py` : une entrée par modèle, associant le nom public à la
+fonction qui l'entraîne.
 
 # 6 TODO
 

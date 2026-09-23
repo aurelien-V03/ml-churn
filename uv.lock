@@ -2055,6 +2055,7 @@ dependencies = [
     { name = "codecarbon" },
     { name = "evidently" },
     { name = "fastapi" },
+    { name = "httpx" },
     { name = "ipykernel" },
     { name = "matplotlib" },
     { name = "mlflow" },
@@ -2069,6 +2070,7 @@ dependencies = [
     { name = "shap" },
     { name = "sqlalchemy" },
     { name = "typer" },
+    { name = "uvicorn" },
     { name = "xgboost" },
 ]
 
@@ -2084,6 +2086,7 @@ requires-dist = [
     { name = "codecarbon", specifier = ">=3.3.1" },
     { name = "evidently", specifier = ">=0.7.21" },
     { name = "fastapi", specifier = ">=0.141.1" },
+    { name = "httpx", specifier = ">=0.28.1" },
     { name = "ipykernel", specifier = ">=7.3.0" },
     { name = "matplotlib", specifier = ">=3.11.1" },
     { name = "mlflow", specifier = ">=3.16.0" },
@@ -2098,6 +2101,7 @@ requires-dist = [
     { name = "shap", specifier = ">=0.52.0" },
     { name = "sqlalchemy", specifier = ">=2.0.52" },
     { name = "typer", specifier = ">=0.27.2" },
+    { name = "uvicorn", specifier = ">=0.52.4" },
     { name = "xgboost", specifier = ">=3.4.1" },
 ]
 
