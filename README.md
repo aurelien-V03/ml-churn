@@ -53,6 +53,7 @@ l'autre.
 
 ## Commandes utiles
 
+- docker compose `docker compose up -d`
 - serveur FastApi `uv run uvicorn ml_churn.api.main:app --reload`
 - mlflow `uv run mlflow ui --backend-store-uri sqlite:///mlflow.db`
 
