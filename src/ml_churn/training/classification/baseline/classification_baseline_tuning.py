@@ -15,7 +15,7 @@ Usage :
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 import optuna
 import pandas as pd
@@ -35,7 +35,9 @@ from ml_churn.training.common.data import (
     split_train_validation_test,
 )
 from ml_churn.training.common.explain import log_shap_figures
+from ml_churn.training.common.logs import log_carbon_footprint, log_objective
 from ml_churn.training.common.metrics import (
+    OBJECTIFS,
     PRECISION_MINIMALE,
     classification_metrics,
     confusion_at_threshold,
@@ -43,6 +45,7 @@ from ml_churn.training.common.metrics import (
 )
 from ml_churn.training.common.plots import confusion_matrix_figure
 from ml_churn.training.common.tracking import mlflow_tracking
+from ml_churn.training.common.tracking.carbon import track_emissions
 
 # Nom des runs MLflow, suffixe par le seuil teste.
 RUN_PREFIX = "classification_base_model_threshold"
@@ -51,9 +54,11 @@ RUN_PREFIX = "classification_base_model_threshold"
 PAS_SEUIL = 0.1
 SEUILS: list[float] = [round(i * PAS_SEUIL, 1) for i in range(int(1 / PAS_SEUIL) + 1)]
 
-# Objectif par defaut : le F1 equilibre precision et rappel sans supposer de
-# cout metier. `recall_sous_contrainte` privilegie la detection des churners.
-OBJECTIF = "f1"
+# Objectif par defaut : le F2 pondere le rappel quatre fois plus que la
+# precision, conformement au postulat metier -- un churner manque coute cher,
+# une fausse alerte se supporte. `f1` les equilibre, `recall_sous_contrainte`
+# maximise le rappel sous un plancher de precision.
+OBJECTIF = "f2"
 
 
 @dataclass
@@ -64,6 +69,8 @@ class Tuning:
     score_validation: float
     metrics_test: dict[str, float]
     essais: pd.DataFrame
+    # Energie et CO2 de la recherche, remplis par `tune_baseline_threshold`.
+    empreinte: dict[str, float] = field(default_factory=dict)
 
 
 def _metrics_au_seuil(
@@ -73,7 +80,19 @@ def _metrics_au_seuil(
 
 
 def tune_baseline_threshold(*, objectif: str = OBJECTIF, echo: bool = True) -> Tuning:
-    """Cherche le seuil optimal et enregistre chaque essai dans MLflow."""
+    """Cherche le seuil optimal, en mesurant l'empreinte carbone de la recherche."""
+    with track_emissions("recherche-baseline") as empreinte:
+        resultat = _rechercher(objectif=objectif, echo=echo)
+
+    resultat.empreinte = empreinte
+    if echo:
+        log_carbon_footprint(empreinte, titre="de la recherche complete")
+
+    return resultat
+
+
+def _rechercher(*, objectif: str, echo: bool) -> Tuning:
+    """Balaie la grille de seuils et enregistre chaque essai dans MLflow."""
     df = load_gold()
     features = feature_columns(TARGET, EXCLUSIONS)
     X = df[features].apply(pd.to_numeric, errors="coerce")
@@ -93,7 +112,7 @@ def tune_baseline_threshold(*, objectif: str = OBJECTIF, echo: bool = True) -> T
 
     if echo:
         print(
-            f"[RECHERCHE] seuil, objectif '{objectif}', {len(SEUILS)} seuils "
+            f"[RECHERCHE] seuil, {len(SEUILS)} seuils "
             f"de {SEUILS[0]:g} a {SEUILS[-1]:g} (pas {PAS_SEUIL:g})"
         )
         detail = " / ".join(
@@ -101,6 +120,7 @@ def tune_baseline_threshold(*, objectif: str = OBJECTIF, echo: bool = True) -> T
             for nom, taille in split.tailles.items()
         )
         print(f"  {detail}")
+        log_objective(objectif)
 
     optuna.logging.set_verbosity(optuna.logging.WARNING)
     essais: list[dict[str, float]] = []
@@ -125,8 +145,15 @@ def tune_baseline_threshold(*, objectif: str = OBJECTIF, echo: bool = True) -> T
             },
             tags={"etape": "tuning", "cible": TARGET},
         ):
+            # `score` est la valeur optimisee ; `f2` est logge en plus pour que
+            # les runs restent comparables si l'objectif change.
             mlflow_tracking.log_metrics(
-                {**metrics, "auc": auc_validation, "score": score}
+                {
+                    **metrics,
+                    "auc": auc_validation,
+                    "score F2": objective_score(metrics, "f2"),
+                    "score": score,
+                }
             )
             # La matrice change a chaque seuil : c'est ce que le run illustre.
             mlflow_tracking.log_figure(
@@ -170,6 +197,7 @@ def tune_baseline_threshold(*, objectif: str = OBJECTIF, echo: bool = True) -> T
         mlflow_tracking.log_metrics(
             {
                 "score_validation": etude.best_value,
+                "test score F2": objective_score(metrics_test, "f2"),
                 **{f"test_{nom}": valeur for nom, valeur in metrics_test.items()},
             }
         )
@@ -221,7 +249,7 @@ app = typer.Typer(help=__doc__)
 
 @app.command()
 def main(
-    objectif: str = typer.Option(OBJECTIF, help="f1 ou recall_sous_contrainte"),
+    objectif: str = typer.Option(OBJECTIF, help=f"un de {OBJECTIFS}"),
 ) -> None:
     tune_baseline_threshold(objectif=objectif)
 

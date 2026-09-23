@@ -1,0 +1,112 @@
+{
+  "model": "classification_baseline",
+  "saved_at": "2026-09-23T10:43:10+02:00",
+  "versions": {
+    "python": "3.13",
+    "scikit-learn": "1.9.0",
+    "numpy": "2.5.3",
+    "joblib": "1.6.0"
+  },
+  "threshold": 0.5,
+  "target": "churn",
+  "features": [
+    "anciennete_mois",
+    "sieges_souscrits",
+    "utilisateurs_actifs",
+    "taux_adoption_pct",
+    "connexions_30j",
+    "heures_usage_30j",
+    "fonctionnalites_utilisees",
+    "nb_integrations",
+    "derniere_connexion_jours",
+    "tickets_support_90j",
+    "delai_reponse_support_h",
+    "csat",
+    "retards_paiement_12m",
+    "revenu_mensuel_recurrent_eur",
+    "inactivite_relative",
+    "inactif_30j",
+    "taux_fonctionnalites",
+    "jour_souscription_l",
+    "jour_souscription_m",
+    "jour_souscription_me",
+    "jour_souscription_j",
+    "jour_souscription_v",
+    "jour_souscription_s",
+    "jour_souscription_d",
+    "secteur_te",
+    "secteur_fi",
+    "secteur_co",
+    "secteur_sa",
+    "secteur_in",
+    "secteur_pb",
+    "secteur_en",
+    "pays_fr",
+    "pays_es",
+    "pays_ca",
+    "pays_de",
+    "pays_ch",
+    "pays_be",
+    "taille_entreprise_tpe",
+    "taille_entreprise_pme",
+    "taille_entreprise_eti",
+    "taille_entreprise_ge",
+    "plan_str",
+    "plan_pro",
+    "plan_bus",
+    "plan_ent",
+    "couleur_theme_interface_c",
+    "couleur_theme_interface_ve",
+    "couleur_theme_interface_b",
+    "couleur_theme_interface_v",
+    "couleur_theme_interface_s",
+    "code_datacenter_eu_w1",
+    "code_datacenter_eu_w3",
+    "code_datacenter_us_e1",
+    "code_datacenter_ap_s1",
+    "groupe_experimentation_a",
+    "groupe_experimentation_b",
+    "groupe_experimentation_c",
+    "polarite_csm_alerte",
+    "polarite_csm_neutre",
+    "polarite_csm_positif",
+    "polarite_csm_absent",
+    "niveau_anciennete_recent",
+    "niveau_anciennete_etabli",
+    "niveau_anciennete_ancien"
+  ],
+  "sizes": {
+    "n_train": 3000,
+    "n_validation": 1000,
+    "n_test": 1000
+  },
+  "test_metrics": {
+    "accuracy": 0.808,
+    "recall": 0.8,
+    "false_positive_rate": 0.1889,
+    "precision": 0.6222,
+    "auc": 0.8773
+  },
+  "carbon": {
+    "co2_mg": 0.2752,
+    "energy_mwh": 4.9109,
+    "duration_s": 0.0208
+  },
+  "datasets": {
+    "train": {
+      "file": "classification_baseline_train.csv",
+      "rows": 3000,
+      "columns": 66
+    },
+    "validation": {
+      "file": "classification_baseline_validation.csv",
+      "rows": 1000,
+      "columns": 66
+    },
+    "test": {
+      "file": "classification_baseline_test.csv",
+      "rows": 1000,
+      "columns": 66
+    }
+  }
+}

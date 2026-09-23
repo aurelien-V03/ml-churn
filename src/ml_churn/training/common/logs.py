@@ -11,7 +11,7 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 
-from ml_churn.training.common.metrics import FORMULES
+from ml_churn.training.common.metrics import DESCRIPTIONS_OBJECTIFS, FORMULES
 
 
 def log_dataset(
@@ -76,6 +76,25 @@ def log_feature_weights(
             continue
         sens = "augmente" if value > 0 else "diminue "
         print(f"  {nom:<30} {value:+.2f}  ({sens} le risque)")
+
+
+def log_objective(objectif: str) -> None:
+    """Objectif maximise par la recherche, et ce qu'il privilegie."""
+    print(f"\n[OBJECTIF] {objectif} : {DESCRIPTIONS_OBJECTIFS[objectif]}")
+
+
+def log_carbon_footprint(
+    empreinte: dict[str, float], *, titre: str = "de l'entrainement"
+) -> None:
+    """Energie consommee et CO2 equivalent du bloc mesure."""
+    if not empreinte:
+        return
+
+    print(f"\n[EMPREINTE CARBONE] {titre}")
+    print(f"  ⏱️  duree             {empreinte['duration_s']:.2f} s")
+    print(f"  ⚡ energie            {empreinte['energy_mwh']:.2f} mWh")
+    print(f"  🌍 emissions          {empreinte['co2_mg']:.2f} mg CO2eq")
+    print(f"  💧 eau                {empreinte['water_ml']:.2f} mL")
 
 
 def log_classification_training(

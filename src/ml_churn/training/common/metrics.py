@@ -46,22 +46,45 @@ def confusion_at_threshold(
     return confusion_matrix(y_true, (probabilities >= seuil).astype(int))
 
 
+# Poids du rappel dans chaque objectif de la famille F-beta. Un beta de 2 dit
+# qu'un churner manque coute quatre fois plus cher qu'une fausse alerte : c'est
+# le rapport des couts metier, exprime dans la seule unite que le tuning lise.
+BETA: dict[str, float] = {"f1": 1.0, "f2": 2.0}
+
+OBJECTIFS = (*BETA, "recall_sous_contrainte")
+
+# Ce que chaque objectif privilegie, pour le rappeler dans les logs.
+DESCRIPTIONS_OBJECTIFS: dict[str, str] = {
+    "f1": "precision et rappel a poids egal",
+    "f2": "le rappel pese 4 fois la precision",
+    "recall_sous_contrainte": (
+        f"rappel maximal, sous precision >= {PRECISION_MINIMALE:.0%}"
+    ),
+}
+
+
 def objective_score(metrics: dict[str, float], objectif: str) -> float:
     """Valeur a maximiser pour un jeu de metriques donne.
 
     `f1` equilibre precision et rappel sans supposer de cout metier.
-    `recall_sous_contrainte` privilegie la detection des churners, avec un
-    plancher de precision : un modele qui alerte sur tout le monde a un rappel
-    parfait, la contrainte evite cette solution degeneree.
+    `f2` pondere le rappel quatre fois plus que la precision : a retenir quand
+    un churner manque coute plus cher qu'une fausse alerte.
+    `recall_sous_contrainte` maximise le rappel sous un plancher de precision.
+    Sans ce plancher, alerter sur tout le monde donnerait un rappel parfait.
     """
+    if objectif not in OBJECTIFS:
+        raise ValueError(f"objectif inconnu : {objectif!r}, attendu {OBJECTIFS}")
+
     precision, recall = metrics["precision"], metrics["recall"]
 
     if objectif == "recall_sous_contrainte":
         return recall if precision >= PRECISION_MINIMALE else 0.0
 
-    if precision + recall == 0:
+    beta = BETA[objectif]
+    denominateur = beta**2 * precision + recall
+    if denominateur == 0:
         return 0.0
-    return 2 * precision * recall / (precision + recall)
+    return (1 + beta**2) * precision * recall / denominateur
 
 
 def evaluate_at_threshold(

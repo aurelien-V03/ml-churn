@@ -18,7 +18,7 @@ Usage :
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
 import optuna
@@ -34,20 +34,25 @@ from ml_churn.training.classification.final.classification_xgboost_training impo
     prepare_split,
 )
 from ml_churn.training.common.explain import log_shap_figures
+from ml_churn.training.common.logs import log_carbon_footprint, log_objective
 from ml_churn.training.common.metrics import (
+    OBJECTIFS,
     classification_metrics,
     confusion_at_threshold,
     objective_score,
 )
 from ml_churn.training.common.plots import confusion_matrix_figure
 from ml_churn.training.common.tracking import mlflow_tracking
+from ml_churn.training.common.tracking.carbon import track_emissions
 
 # Nom des runs MLflow, suffixe par le numero d'essai.
 RUN_PREFIX = "classification_xgboost_trial"
 
-# Objectif par defaut : le F1 equilibre precision et rappel sans supposer de
-# cout metier. `recall_sous_contrainte` privilegie la detection des churners.
-OBJECTIF = "f1"
+# Objectif par defaut : le F2 pondere le rappel quatre fois plus que la
+# precision, conformement au postulat metier -- un churner manque coute cher,
+# une fausse alerte se supporte. `f1` les equilibre, `recall_sous_contrainte`
+# maximise le rappel sous un plancher de precision.
+OBJECTIF = "f2"
 
 # Nombre d'essais : chacun reentraine un modele, le cout n'est plus negligeable.
 N_ESSAIS = 30
@@ -58,7 +63,8 @@ TYPES_XGBOOST = ["xgboost.core.Booster", "xgboost.sklearn.XGBClassifier"]
 
 # Colonnes du suivi essai par essai.
 EN_TETE_ESSAIS = (
-    f"{'essai':>7} {'score':>8} {'seuil':>7} {'recall':>8} {'precision':>10} {'auc':>7}"
+    f"{'essai':>7} {'score':>8} {'seuil':>7} {'recall':>8} {'precision':>10} "
+    f"{'FPR':>7} {'auc':>7}"
 )
 
 
@@ -74,7 +80,7 @@ def _ligne_essai(
     return (
         f"  {f'{numero + 1}/{total}':>7} {score:>8.2f} {seuil:>7.2f} "
         f"{metrics['recall']:>8.2f} {metrics['precision']:>10.2f} "
-        f"{metrics['auc']:>7.2f}"
+        f"{metrics['false_positive_rate']:>7.2f} {metrics['auc']:>7.2f}"
         f"{'  <- meilleur' if progres else ''}"
     )
 
@@ -88,6 +94,8 @@ class Tuning:
     score_validation: float
     metrics_test: dict[str, float]
     essais: pd.DataFrame
+    # Energie et CO2 de la recherche, remplis par `tune_xgboost`.
+    empreinte: dict[str, float] = field(default_factory=dict)
 
 
 def espace_de_recherche(trial: optuna.Trial) -> dict[str, Any]:
@@ -118,20 +126,35 @@ def espace_de_recherche(trial: optuna.Trial) -> dict[str, Any]:
 def tune_xgboost(
     *, objectif: str = OBJECTIF, n_essais: int = N_ESSAIS, echo: bool = True
 ) -> Tuning:
-    """Cherche les meilleurs hyperparametres et enregistre chaque essai dans MLflow."""
+    """Cherche les hyperparametres, en mesurant l'empreinte carbone de la recherche.
+
+    La mesure porte sur la recherche entiere -- une trentaine d'entrainements
+    enchaines -- et non sur chacun : un `fit` de quelques dixiemes de seconde
+    est trop bref pour que codecarbon lui attribue une energie fiable.
+    """
+    with track_emissions("recherche-xgboost") as empreinte:
+        resultat = _rechercher(objectif=objectif, n_essais=n_essais, echo=echo)
+
+    resultat.empreinte = empreinte
+    if echo:
+        log_carbon_footprint(empreinte, titre="de la recherche complete")
+
+    return resultat
+
+
+def _rechercher(*, objectif: str, n_essais: int, echo: bool) -> Tuning:
+    """Explore l'espace des hyperparametres et enregistre chaque essai dans MLflow."""
     _, features, split = prepare_split()
     poids = poids_classe_positive(split.y_train)
 
     if echo:
-        print(
-            f"[RECHERCHE] hyperparametres XGBoost, objectif '{objectif}', "
-            f"{n_essais} essais"
-        )
+        print(f"[RECHERCHE] hyperparametres XGBoost, {n_essais} essais")
         detail = " / ".join(
             f"{nom.removeprefix('n_')} {taille}"
             for nom, taille in split.tailles.items()
         )
         print(f"  {detail}  ({len(features)} features, scale_pos_weight {poids:.2f})")
+        log_objective(objectif)
         print(f"\n  {EN_TETE_ESSAIS}")
 
     optuna.logging.set_verbosity(optuna.logging.WARNING)
@@ -167,7 +190,15 @@ def tune_xgboost(
             },
             tags={"etape": "tuning", "cible": TARGET},
         ):
-            mlflow_tracking.log_metrics({**metrics, "score": score})
+            # `score` est la valeur optimisee ; `f2` est logge en plus pour que
+            # les runs restent comparables si l'objectif change.
+            mlflow_tracking.log_metrics(
+                {
+                    **metrics,
+                    "score F2": objective_score(metrics, "f2"),
+                    "score": score,
+                }
+            )
             mlflow_tracking.log_figure(
                 confusion_matrix_figure(
                     matrice,
@@ -226,6 +257,7 @@ def tune_xgboost(
         mlflow_tracking.log_metrics(
             {
                 "score_validation": etude.best_value,
+                "test score F2": objective_score(metrics_test, "f2"),
                 **{f"test_{nom}": valeur for nom, valeur in metrics_test.items()},
             }
         )
@@ -277,7 +309,8 @@ def _log(resultat: Tuning, objectif: str) -> None:
         print(
             f"  {int(ligne['essai']) + 1:>7} {ligne['score']:>8.2f} "
             f"{ligne['seuil']:>7.2f} {ligne['recall']:>8.2f} "
-            f"{ligne['precision']:>10.2f} {ligne['auc']:>7.2f}"
+            f"{ligne['precision']:>10.2f} {ligne['false_positive_rate']:>7.2f} "
+            f"{ligne['auc']:>7.2f}"
         )
 
     print(f"\n  runs enregistres dans {mlflow_tracking.TRACKING_DB} (uv run mlflow ui)")
@@ -288,7 +321,7 @@ app = typer.Typer(help=__doc__)
 
 @app.command()
 def main(
-    objectif: str = typer.Option(OBJECTIF, help="f1 ou recall_sous_contrainte"),
+    objectif: str = typer.Option(OBJECTIF, help=f"un de {OBJECTIFS}"),
     n_essais: int = typer.Option(N_ESSAIS, help="nombre d'essais Optuna"),
 ) -> None:
     tune_xgboost(objectif=objectif, n_essais=n_essais)
