@@ -51,6 +51,11 @@ depuis le notebook. Le code partagé entre
 plusieurs scripts vit dans un `common/` — jamais dupliqué d'un modèle à
 l'autre.
 
+## Commandes utiles
+
+- serveur FastApi `uv run uvicorn ml_churn.api.main:app --reload`
+- mlflow `uv run mlflow ui --backend-store-uri sqlite:///mlflow.db`
+
 ## Notes personnelles
 
 ### Données
