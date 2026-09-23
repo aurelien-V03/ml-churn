@@ -25,7 +25,7 @@ src/
 │       ├── common/         Gold, découpage, métriques, figures, SHAP, sauvegarde
 │       │   └── tracking/   Suivi MLflow, commun à tous les modèles
 │       ├── classification/ Prédiction du churn (cible `churn`)
-│       │   ├── baseline/   Régression logistique, seuil fixe à 0.5
+│       │   ├── baseline/   Régression logistique + recherche de seuil
 │       │   └── final/      XGBoost + recherche d'hyperparamètres
 │       └── regression/     Valeur vie client (cible `valeur_vie_client_eur`)
 │           └── baseline/
@@ -402,6 +402,8 @@ Hypothese confirmation
 
 Data leakage :
     - sante_compte_fin_periode
+
+    
 ## 2. Choic des métriques
 
 Il s'agit d'un dataset déséquilibré (28%)

@@ -14,6 +14,7 @@ Usage :
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -53,6 +54,26 @@ EXCLUSIONS: dict[str, str] = {
 # Sous-dossier d'`artifacts/` et prefixe des fichiers enregistres.
 ARTIFACTS_DOSSIER = "final"
 ARTIFACTS_NOM = "classification_xgboost"
+
+
+def exclusions_sans(colonnes: Sequence[str]) -> dict[str, str]:
+    """`EXCLUSIONS` augmentee de toutes les modalites one-hot des colonnes citees.
+
+    Une colonne categorielle n'existe en gold que par ses modalites encodees :
+    retirer `pays` veut dire retirer `pays_fr`, `pays_es` et les autres. Le
+    decoupage des trois jeux n'en depend pas -- il ne porte que sur les lignes
+    et la cible -- donc les modeles restent comparables.
+    """
+    return {
+        **EXCLUSIONS,
+        **{
+            feature: f"retiree avec {colonne}"
+            for colonne in colonnes
+            for feature in feature_columns(TARGET, EXCLUSIONS)
+            if feature.startswith(f"{colonne}_")
+        },
+    }
+
 
 # Point de depart raisonnable, avant toute recherche : arbres peu profonds et
 # pas d'apprentissage lent, ce qui limite le surapprentissage sur 3000 lignes.
@@ -120,10 +141,12 @@ def build_xgboost_pipeline(
     )
 
 
-def prepare_split() -> tuple[pd.DataFrame, list[str], Split]:
+def prepare_split(
+    exclusions: dict[str, str] | None = None,
+) -> tuple[pd.DataFrame, list[str], Split]:
     """Charge gold, selectionne les features et decoupe les trois jeux."""
     df = load_gold()
-    features = feature_columns(TARGET, EXCLUSIONS)
+    features = feature_columns(TARGET, exclusions or EXCLUSIONS)
 
     X = df[features].apply(pd.to_numeric, errors="coerce")
     y = pd.to_numeric(df[TARGET])
@@ -135,10 +158,18 @@ def train_classification_xgboost(
     *,
     seuil: float = SEUIL_DEFAUT,
     hyperparametres: dict[str, Any] | None = None,
+    exclusions: dict[str, str] | None = None,
+    nom: str = ARTIFACTS_NOM,
     echo: bool = True,
 ) -> Result:
-    """Entraine XGBoost et l'evalue sur un jeu de test tenu a l'ecart."""
-    df, features, split = prepare_split()
+    """Entraine XGBoost et l'evalue sur un jeu de test tenu a l'ecart.
+
+    `exclusions` remplace la liste par defaut des colonnes ecartees, `nom`
+    distingue les fichiers enregistres : de quoi entrainer une variante sans
+    ecraser le modele de reference.
+    """
+    retenues = exclusions or EXCLUSIONS
+    df, features, split = prepare_split(retenues)
 
     retenus = {**HYPERPARAMETRES, **(hyperparametres or {})}
     model = build_xgboost_pipeline(
@@ -159,7 +190,7 @@ def train_classification_xgboost(
         model,
         datasets=training_extracts(df, features, split, target=TARGET),
         dossier=ARTIFACTS_DOSSIER,
-        nom=ARTIFACTS_NOM,
+        nom=nom,
         metadonnees={
             "threshold": seuil,
             "target": TARGET,
@@ -174,13 +205,13 @@ def train_classification_xgboost(
         print(f"[ENTRAINEMENT] XGBoost sur {split.tailles['n_train']} lignes de train")
         print(f"\n[SEUIL] {seuil:.2f}")
         print("\n[HYPERPARAMETRES]")
-        for nom, valeur in retenus.items():
+        for parametre, valeur in retenus.items():
             affichage = f"{valeur:.2f}" if isinstance(valeur, float) else str(valeur)
-            print(f"  {nom:<20} {affichage}")
+            print(f"  {parametre:<20} {affichage}")
         log_classification_training(
             df=df,
             features=features,
-            exclusions=EXCLUSIONS,
+            exclusions=retenues,
             tailles=split.tailles,
             y_test=split.y_test,
             metrics=metrics,
