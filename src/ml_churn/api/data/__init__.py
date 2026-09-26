@@ -2,14 +2,16 @@
 
 from ml_churn.api.data.schemas import (
     HealthResponse,
+    PredictChurnResponse,
+    PredictClvResponse,
     PredictRequest,
-    PredictResponse,
     ReadyResponse,
 )
 
 __all__ = [
     "HealthResponse",
+    "PredictChurnResponse",
+    "PredictClvResponse",
     "PredictRequest",
-    "PredictResponse",
     "ReadyResponse",
 ]

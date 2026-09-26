@@ -1,0 +1,78 @@
+{
+  "model": "classification_xgboost",
+  "saved_at": "2026-09-26T19:02:33+02:00",
+  "versions": {
+    "python": "3.13",
+    "scikit-learn": "1.9.0",
+    "numpy": "2.5.3",
+    "joblib": "1.6.0"
+  },
+  "threshold": 0.4,
+  "target": "churn",
+  "hyperparameters": {
+    "n_estimators": 300,
+    "max_depth": 2,
+    "learning_rate": 0.02,
+    "subsample": 0.96,
+    "colsample_bytree": 0.76,
+    "min_child_weight": 8,
+    "gamma": 4.57,
+    "reg_alpha": 0.0,
+    "reg_lambda": 4.62
+  },
+  "features": [
+    "anciennete_mois",
+    "sieges_souscrits",
+    "utilisateurs_actifs",
+    "taux_adoption_pct",
+    "connexions_30j",
+    "heures_usage_30j",
+    "fonctionnalites_utilisees",
+    "nb_integrations",
+    "derniere_connexion_jours",
+    "tickets_support_90j",
+    "delai_reponse_support_h",
+    "csat",
+    "retards_paiement_12m",
+    "revenu_mensuel_recurrent_eur",
+    "inactivite_relative",
+    "inactif_30j",
+    "taux_fonctionnalites",
+    "polarite_csm_alerte",
+    "polarite_csm_neutre",
+    "polarite_csm_positif",
+    "polarite_csm_absent",
+    "niveau_anciennete_recent",
+    "niveau_anciennete_etabli",
+    "niveau_anciennete_ancien"
+  ],
+  "sizes": {
+    "n_train": 3000,
+    "n_validation": 1000,
+    "n_test": 1000
+  },
+  "test_metrics": {
+    "accuracy": 0.75,
+    "recall": 0.87,
+    "false_positive_rate": 0.3,
+    "precision": 0.53,
+    "auc": 0.87
+  },
+  "datasets": {
+    "train": {
+      "file": "classification_xgboost_train.csv",
+      "rows": 3000,
+      "columns": 26
+    },
+    "validation": {
+      "file": "classification_xgboost_validation.csv",
+      "rows": 1000,
+      "columns": 26
+    },
+    "test": {
+      "file": "classification_xgboost_test.csv",
+      "rows": 1000,
+      "columns": 26
+    }
+  }
+}

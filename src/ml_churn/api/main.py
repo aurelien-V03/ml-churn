@@ -1,17 +1,19 @@
-"""API REST exposant les modeles de prediction du churn.
+"""API REST exposant les modeles de prediction.
 
-Trois endpoints :
+Quatre endpoints :
 
-- `GET /health`  : le service repond, sans rien supposer des modeles.
-- `GET /ready`   : les modeles sont charges et peuvent predire.
-- `POST /predict`: probabilite de churn d'un client, par le modele demande.
+- `GET /health`       : le service repond, sans rien supposer des modeles.
+- `GET /ready`        : les deux familles de modeles sont entrainees.
+- `POST /predict-churn` : probabilite de churn d'un client.
+- `POST /predict-clv`   : valeur vie client estimee, en euros.
+
+La distinction entre `health` et `ready` est celle des sondes Kubernetes : un
+service peut etre vivant mais pas encore pret, le temps d'entrainer ses
+modeles.
 
 La page de test est servie a la racine. Ouverte directement depuis le disque
 elle fonctionne aussi, en visant `127.0.0.1:8000` : c'est ce que CORS autorise
 ci-dessous.
-
-La distinction entre `health` et `ready` est celle des sondes Kubernetes : un
-service peut etre vivant mais pas encore pret, le temps de charger ses modeles.
 
 Usage :
     uv run uvicorn ml_churn.api.main:app --reload
@@ -29,10 +31,12 @@ from fastapi.staticfiles import StaticFiles
 
 from ml_churn.api.data import (
     HealthResponse,
+    PredictChurnResponse,
+    PredictClvResponse,
     PredictRequest,
-    PredictResponse,
     ReadyResponse,
 )
+from ml_churn.api.registry import MODELES as FABRIQUES
 from ml_churn.api.registry import Modele, entrainer_tout
 
 # Page de test de l'API, servie a la racine. Elle vit hors du package `api` :
@@ -44,9 +48,9 @@ UI_DIR = Path(__file__).parent.parent / "ui"
 # cote d'un seuil a 0.40.
 DECIMALES = 2
 
-# Rempli au demarrage. Vide tant que l'entrainement n'a pas abouti, ce que
-# `/ready` signale.
-MODELES: dict[str, Modele] = {}
+# Rempli au demarrage, une entree par famille. Tant qu'une famille manque, le
+# service n'est pas pret -- ce que `/ready` signale.
+MODELES: dict[str, dict[str, Modele]] = {}
 
 
 @asynccontextmanager
@@ -59,10 +63,9 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
 app = FastAPI(
     title="ml-churn",
-    description="Prediction du churn a partir des modeles entraines.",
+    description="Prediction du churn et de la valeur vie client.",
     lifespan=lifespan,
 )
-
 
 # La page servie a la racine n'en a pas besoin -- meme origine -- mais elle
 # reste utilisable ouverte directement depuis le disque, ou l'origine vaut
@@ -75,6 +78,29 @@ app.add_middleware(
 )
 
 
+def _modele(famille: str, nom: str) -> Modele:
+    """Modele demande, ou l'erreur HTTP correspondante."""
+    disponibles = MODELES.get(famille, {})
+    modele = disponibles.get(nom)
+    if modele is None:
+        raise HTTPException(
+            status.HTTP_404_NOT_FOUND,
+            detail=f"modele inconnu : {nom!r}, disponibles {sorted(disponibles)}",
+        )
+
+    return modele
+
+
+def _verifier(modele: Modele, donnees: dict) -> None:
+    """Refuse une ligne incomplete avant d'atteindre le modele."""
+    manquantes = modele.colonnes_manquantes(donnees)
+    if manquantes:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail={"colonnes_manquantes": manquantes},
+        )
+
+
 @app.get("/health", response_model=HealthResponse)
 def health() -> HealthResponse:
     """Le service tourne."""
@@ -83,49 +109,63 @@ def health() -> HealthResponse:
 
 @app.get("/ready", response_model=ReadyResponse)
 def ready() -> ReadyResponse:
-    """Les modeles sont entraines et prets.
+    """Les deux familles de modeles sont entrainees.
 
-    Repond 503 tant qu'aucun modele n'est disponible : un orchestrateur doit
-    pouvoir retirer l'instance du service tant qu'elle ne peut pas predire.
+    Repond 503 tant qu'une famille manque : un orchestrateur doit pouvoir
+    retirer l'instance du service tant qu'elle ne peut pas honorer ses deux
+    endpoints de prediction.
     """
-    if not MODELES:
-        raise HTTPException(
-            status.HTTP_503_SERVICE_UNAVAILABLE, detail="aucun modele disponible"
-        )
-
-    return ReadyResponse(ready=True, models=sorted(MODELES))
-
-
-@app.post("/predict", response_model=PredictResponse)
-def predict(requete: PredictRequest) -> PredictResponse:
-    """Probabilite de churn d'un client, et decision au seuil du modele."""
-    modele = MODELES.get(requete.model)
-    if modele is None:
-        raise HTTPException(
-            status.HTTP_404_NOT_FOUND,
-            detail=f"modele inconnu : {requete.model!r}, disponibles {sorted(MODELES)}",
-        )
-
-    manquantes = modele.colonnes_manquantes(requete.data)
+    manquantes = [famille for famille in FABRIQUES if not MODELES.get(famille)]
     if manquantes:
         raise HTTPException(
-            status.HTTP_422_UNPROCESSABLE_CONTENT,
-            detail={"colonnes_manquantes": manquantes},
+            status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail={"familles_non_chargees": manquantes},
         )
 
+    return ReadyResponse(
+        ready=True,
+        models={famille: sorted(modeles) for famille, modeles in MODELES.items()},
+    )
+
+
+@app.post("/predict-churn", response_model=PredictChurnResponse)
+def predict_churn(requete: PredictRequest) -> PredictChurnResponse:
+    """Probabilite de churn d'un client, et decision au seuil du modele."""
+    modele = _modele("churn", requete.model)
+    _verifier(modele, requete.data)
+
     try:
-        probabilite = modele.predict_proba(requete.data)
+        probabilite = modele.probabilite(requete.data)
     except (TypeError, ValueError) as erreur:
         raise HTTPException(
             status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail=f"colonnes non numeriques : {erreur}",
         ) from erreur
 
-    return PredictResponse(
+    return PredictChurnResponse(
         model=modele.nom,
         probability=round(probabilite, DECIMALES),
         threshold=modele.seuil,
         churn=probabilite >= modele.seuil,
+    )
+
+
+@app.post("/predict-clv", response_model=PredictClvResponse)
+def predict_clv(requete: PredictRequest) -> PredictClvResponse:
+    """Valeur vie client estimee, en euros."""
+    modele = _modele("clv", requete.model)
+    _verifier(modele, requete.data)
+
+    try:
+        valeur = modele.valeur(requete.data)
+    except (TypeError, ValueError) as erreur:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail=f"colonnes non numeriques : {erreur}",
+        ) from erreur
+
+    return PredictClvResponse(
+        model=modele.nom, lifetime_value_eur=round(valeur, DECIMALES)
     )
 
 

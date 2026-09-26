@@ -9,8 +9,8 @@
 <body>
   <h1>ml-churn — test de l'API</h1>
   <p class="subtitle">Vingt clients tirés du jeu de test et légèrement modifiés.
-     Les prédictions partent seules dès que le service répond, un appel à
-     <code>/predict</code> par client.</p>
+     Les prédictions partent seules dès que le service répond : un appel à
+     <code>/predict-churn</code> et un à <code>/predict-clv</code> par client.</p>
 
   <div class="status" id="status">
     <span class="dot" id="dot-health"></span><code>/health</code>
@@ -19,10 +19,6 @@
   </div>
 
   <div class="toolbar">
-    <label for="model">modèle</label>
-    <select id="model" name="model">
-      <option value="xgboost">xgboost</option>
-    </select>
     <span class="progress" id="progress"></span>
   </div>
 

@@ -17,7 +17,9 @@ class ReadyResponse(BaseModel):
     """Les modeles sont entraines et prets a predire."""
 
     ready: bool
-    models: list[str] = Field(description="Modeles disponibles pour la prediction")
+    models: dict[str, list[str]] = Field(
+        description="Modeles disponibles, par famille (`churn`, `clv`)"
+    )
 
 
 class PredictRequest(BaseModel):
@@ -32,10 +34,17 @@ class PredictRequest(BaseModel):
     data: dict[str, Any] = Field(description="Colonnes gold du client a evaluer")
 
 
-class PredictResponse(BaseModel):
+class PredictChurnResponse(BaseModel):
     """Probabilite de churn et decision au seuil du modele."""
 
     model: str
     probability: float = Field(description="Probabilite de churn, entre 0 et 1")
     threshold: float = Field(description="Seuil a partir duquel l'alerte est levee")
     churn: bool = Field(description="`probability >= threshold`")
+
+
+class PredictClvResponse(BaseModel):
+    """Valeur vie client estimee."""
+
+    model: str
+    lifetime_value_eur: float = Field(description="Valeur vie client estimee, en euros")

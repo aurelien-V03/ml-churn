@@ -17,9 +17,6 @@ p.subtitle { margin: 0 0 20px; opacity: .7; }
 .status-detail { opacity: .65; }
 
 .toolbar { display: flex; align-items: center; gap: 12px; margin-bottom: 14px; }
-.toolbar label { font-size: .85rem; font-family: ui-monospace, monospace; }
-select { padding: 7px 8px; border: 1px solid var(--border); border-radius: 6px;
-         font: inherit; font-size: .9rem; background: transparent; color: inherit; }
 .progress { font-size: .85rem; opacity: .7; font-variant-numeric: tabular-nums; }
 
 .table-wrapper { overflow-x: auto; border: 1px solid var(--border); border-radius: 10px; }

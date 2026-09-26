@@ -7,12 +7,16 @@ docs/                       Données sources (CSV) et énoncé du cas d'usage
 mlflow.db, mlartifacts/     Suivi des expérimentations (généré)
 
 artifacts/                  Modèles entraînés, versionnés dans git
-├── baseline/               Un dossier par modèle
-└── final/
-    └── AAAA-MM-JJ/         Un dossier par jour d'entraînement
-        ├── *.joblib        Le modèle sérialisé
-        ├── *.json          Versions des bibliothèques, seuil, features, métriques
-        └── *_train.csv     Extraits gold consommés (train / validation / test)
+├── classification/         Une tâche par dossier
+│   ├── baseline/           Régression logistique
+│   └── final/              XGBoost
+└── regression/
+    ├── baseline/
+    └── final/
+        └── AAAA-MM-JJ/     Un dossier par jour d'entraînement
+            ├── *.joblib    Le modèle sérialisé
+            ├── *.json      Versions des bibliothèques, seuil, features, métriques
+            └── *_train.csv Extraits gold consommés (train / validation / test)
 
 src/
 ├── ml_churn/               Package installé (`uv run python -m ml_churn...`)
@@ -31,7 +35,8 @@ src/
 │       │   ├── baseline/   Régression logistique, seuil fixe à 0.5
 │       │   └── final/      XGBoost + recherche d'hyperparamètres
 │       └── regression/     Valeur vie client (cible `valeur_vie_client_eur`)
-│           └── baseline/
+│           ├── baseline/   Régression linéaire, paramètres par défaut
+│           └── final/      XGBoost
 └── visualization/          Hors package, importé via `sys.path`
     ├── scripts/            Un script par type de graphique, plus `plot_all`
     └── graphs/             PNG générés, un dossier par colonne (généré)
@@ -401,33 +406,40 @@ Page de test sur <http://127.0.0.1:8000/> et documentation interactive sur
 <http://127.0.0.1:8000/docs>.
 
 La page (`ui/`) affiche vingt clients tirés au hasard du jeu de test et
-légèrement modifiés, stockés dans `clients.js`. Le bouton **Prédire** appelle
-`/predict` une fois par client et remplit les deux dernières colonnes du
-tableau, distinguées par leur couleur : `churn` prédit, et `estimation vie
-client` laissée vide en attendant le modèle de régression. Elle est servie par
-l'API elle-même : même origine, donc aucune configuration CORS.
+légèrement modifiés, stockés dans `clients.js` avec les 64 colonnes gold dont
+les deux modèles ont besoin. Dès que les sondes passent au vert, elle appelle
+`/predict-churn` et `/predict-clv` une fois par client et remplit les deux
+dernières colonnes du tableau, distinguées par leur couleur. Elle est servie
+par l'API elle-même : même origine, donc aucune configuration CORS.
 
 | Endpoint | Rôle | Réponse |
 | --- | --- | --- |
 | `GET /health` | Le service répond | `{"status": "ok"}` |
-| `GET /ready` | Les modèles sont chargés | `{"ready": true, "models": ["xgboost"]}`, ou 503 |
-| `POST /predict` | Probabilité de churn d'un client | `{"model", "probability", "threshold", "churn"}` |
+| `GET /ready` | Les deux familles de modèles sont entraînées | `{"ready": true, "models": {"churn": ["xgboost"], "clv": ["xgboost"]}}`, ou 503 |
+| `POST /predict-churn` | Probabilité de churn d'un client | `{"model", "probability", "threshold", "churn"}` |
+| `POST /predict-clv` | Valeur vie client estimée | `{"model", "lifetime_value_eur"}` |
 
 `/health` et `/ready` sont distincts comme les sondes Kubernetes : le service
 peut répondre avant d'être capable de prédire, le temps de charger ses modèles.
 
-Le corps de `/predict` porte deux champs, `model` et `data`. Les clés de `data`
+Les deux endpoints de prédiction partagent le même corps, `model` et `data`. Les clés de `data`
 sont les colonnes de la couche gold ; celles que le modèle n'utilise pas sont
 ignorées, une ligne gold complète peut donc être envoyée telle quelle.
 
 ```bash
-curl -X POST http://127.0.0.1:8000/predict \
+curl -X POST http://127.0.0.1:8000/predict-churn \
   -H 'content-type: application/json' \
   -d '{"model": "xgboost", "data": {"anciennete_mois": 12, "nb_integrations": 0, ...}}'
 ```
 
 ```json
-{"model": "xgboost", "probability": 0.7498, "threshold": 0.4, "churn": true}
+{"model": "xgboost", "probability": 0.77, "threshold": 0.4, "churn": true}
+```
+
+Même requête sur `/predict-clv` :
+
+```json
+{"model": "xgboost", "lifetime_value_eur": 264317.94}
 ```
 
 Codes d'erreur : **404** si le modèle demandé n'existe pas (avec la liste des
@@ -435,8 +447,10 @@ modèles disponibles), **422** s'il manque des colonnes (avec leur liste) ou si
 une valeur n'est pas numérique.
 
 Les modèles exposés sont déclarés dans `MODELES`, à la fin de
-`api/registry.py` : une entrée par modèle, associant le nom public à la
-fonction qui l'entraîne.
+`api/registry.py` : une entrée par famille (`churn`, `clv`), puis une par
+modèle, associant le nom public à la fonction qui l'entraîne. Les
+configurations servies — seuil et hyperparamètres retenus par les recherches —
+sont figées en tête du même fichier.
 
 # 6 TODO
 

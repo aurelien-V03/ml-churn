@@ -11,6 +11,23 @@ const STATUS_PERIOD_MS = 5000;
 // the service has been away -- the table would otherwise keep stale results.
 let served = false;
 
+// Only one model per family so far; the request carries its name anyway.
+const MODEL = "xgboost";
+
+// Columns shown in the table. The requests still carry every feature the
+// models need: only the display is trimmed.
+const DISPLAYED = [
+  "client_id",
+  "anciennete_mois",
+  "sieges_souscrits",
+  "revenu_mensuel_recurrent_eur",
+  "utilisateurs_actifs",
+  "taux_adoption_pct",
+  "connexions_30j",
+  "heures_usage_30j",
+  "derniere_connexion_jours",
+];
+
 // Predicted columns, appended after the client's own data.
 const PREDICTED = [
   { key: "churn", label: "churn" },
@@ -19,14 +36,11 @@ const PREDICTED = [
 
 const head = document.getElementById("head");
 const body = document.getElementById("body");
-const modelSelect = document.getElementById("model");
 const progress = document.getElementById("progress");
 const error = document.getElementById("error");
 
 function buildTable() {
-  const columns = ["client_id", ...FEATURES];
-
-  for (const name of columns) {
+  for (const name of DISPLAYED) {
     const cell = document.createElement("th");
     cell.textContent = name;
     head.appendChild(cell);
@@ -40,7 +54,7 @@ function buildTable() {
 
   CLIENTS.forEach((client, index) => {
     const row = document.createElement("tr");
-    for (const name of columns) {
+    for (const name of DISPLAYED) {
       const cell = document.createElement("td");
       cell.textContent = client[name];
       row.appendChild(cell);
@@ -56,24 +70,44 @@ function buildTable() {
   });
 }
 
-// One call per client: the endpoint scores a single row at a time.
-async function predictOne(client, index) {
-  const { client_id, ...data } = client;
-  const response = await fetch(`${API}/predict`, {
+// One call per client and per endpoint: each scores a single row at a time.
+async function ask(path, data) {
+  const response = await fetch(`${API}${path}`, {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ model: modelSelect.value, data }),
+    body: JSON.stringify({ model: MODEL, data }),
   });
   const payload = await response.json();
-  if (!response.ok) throw new Error(`HTTP ${response.status} — ${JSON.stringify(payload.detail)}`);
-
-  const cell = document.getElementById(`churn-${index}`);
-  cell.textContent = `${payload.churn ? "oui" : "non"} (${payload.probability})`;
-  cell.classList.toggle("churn-true", payload.churn);
-  cell.classList.toggle("churn-false", !payload.churn);
+  if (!response.ok) {
+    throw new Error(`${path} — HTTP ${response.status} — ${JSON.stringify(payload.detail)}`);
+  }
+  return payload;
 }
 
-// Guards the loop: a model change must not overlap a run already going.
+const EUROS = new Intl.NumberFormat("fr-FR", {
+  style: "currency",
+  currency: "EUR",
+  maximumFractionDigits: 0,
+});
+
+async function predictOne(client, index) {
+  const { client_id, ...data } = client;
+  const [churn, clv] = await Promise.all([
+    ask("/predict-churn", data),
+    ask("/predict-clv", data),
+  ]);
+
+  const churnCell = document.getElementById(`churn-${index}`);
+  churnCell.textContent = `${churn.churn ? "oui" : "non"} (${churn.probability})`;
+  churnCell.classList.toggle("churn-true", churn.churn);
+  churnCell.classList.toggle("churn-false", !churn.churn);
+
+  document.getElementById(`lifetime-${index}`).textContent = EUROS.format(
+    clv.lifetime_value_eur,
+  );
+}
+
+// Guards the loop: a restart must not overlap a run already going.
 let running = false;
 
 async function predictAll() {
@@ -98,9 +132,7 @@ async function predictAll() {
   }
 }
 
-// Changer de modele relance la serie : les colonnes predites viendraient
-// sinon de deux modeles differents.
-modelSelect.addEventListener("change", predictAll);
+
 
 async function probe(path) {
   try {
@@ -116,22 +148,6 @@ function paint(dot, ok) {
   dot.classList.toggle("ko", !ok);
 }
 
-// The dropdown mirrors the list announced by /ready: a model added on the
-// service side shows up here without touching the page.
-function syncModels(models) {
-  const current = [...modelSelect.options].map((option) => option.value);
-  if (current.join() === models.join()) return;
-
-  const chosen = modelSelect.value;
-  modelSelect.innerHTML = "";
-  for (const name of models) {
-    const option = document.createElement("option");
-    option.value = option.textContent = name;
-    modelSelect.appendChild(option);
-  }
-  if (models.includes(chosen)) modelSelect.value = chosen;
-}
-
 async function refreshStatus() {
   const [health, ready] = await Promise.all([probe("/health"), probe("/ready")]);
 
@@ -142,8 +158,11 @@ async function refreshStatus() {
   if (!health.ok && !ready.ok) {
     detail.textContent = "service injoignable";
   } else if (ready.ok) {
-    detail.textContent = `modèles : ${ready.body.models.join(", ")}`;
-    syncModels(ready.body.models);
+    // `models` arrive par famille : {"churn": [...], "clv": [...]}.
+    const familles = Object.entries(ready.body.models)
+      .map(([famille, noms]) => `${famille} : ${noms.join(", ")}`)
+      .join("  ·  ");
+    detail.textContent = familles;
   } else {
     detail.textContent = "modèles non chargés";
   }
