@@ -4,7 +4,14 @@ from __future__ import annotations
 
 import numpy as np
 import pandas as pd
-from sklearn.metrics import confusion_matrix, roc_auc_score
+from sklearn.metrics import (
+    confusion_matrix,
+    mean_absolute_error,
+    mean_absolute_percentage_error,
+    r2_score,
+    roc_auc_score,
+    root_mean_squared_error,
+)
 
 FORMULES: dict[str, str] = {
     "accuracy": "(TP+TN) / (TP+TN+FP+FN)",
@@ -102,3 +109,38 @@ def evaluate_at_threshold(
     metrics["auc"] = roc_auc_score(y, probabilities)
 
     return metrics, matrice
+
+
+FORMULES_REGRESSION: dict[str, str] = {
+    "r2": "part de la variance expliquee, 1 = parfait",
+    "mae": "erreur absolue moyenne, en euros",
+    "rmse": "racine de l'erreur quadratique moyenne, en euros",
+    "mape": "erreur absolue moyenne rapportee a la valeur reelle, en %",
+}
+
+
+# Sens d'optimisation de chaque metrique de regression : seule la part de
+# variance expliquee se maximise, les erreurs se minimisent.
+DIRECTIONS_REGRESSION: dict[str, str] = {
+    "r2": "maximize",
+    "mae": "minimize",
+    "rmse": "minimize",
+    "mape": "minimize",
+}
+
+
+def regression_metrics(y_true: pd.Series, y_pred: np.ndarray) -> dict[str, float]:
+    """Erreurs d'un modele de regression, en euros et en relatif.
+
+    La MAE et la RMSE se lisent dans l'unite de la cible. La RMSE penalise
+    davantage les grosses erreurs : sur une cible aussi etalee que la valeur
+    vie client, l'ecart entre les deux mesure le poids des cas extremes. La
+    MAPE ramene l'erreur a la taille du client, ce que les deux premieres ne
+    font pas.
+    """
+    return {
+        "r2": float(r2_score(y_true, y_pred)),
+        "mae": float(mean_absolute_error(y_true, y_pred)),
+        "rmse": float(root_mean_squared_error(y_true, y_pred)),
+        "mape": float(mean_absolute_percentage_error(y_true, y_pred) * 100),
+    }

@@ -52,7 +52,8 @@ EXCLUSIONS: dict[str, str] = {
 }
 
 # Sous-dossier d'`artifacts/` et prefixe des fichiers enregistres.
-ARTIFACTS_DOSSIER = "final"
+ARTIFACTS_TACHE = "classification"
+ARTIFACTS_NIVEAU = "final"
 ARTIFACTS_NOM = "classification_xgboost"
 
 # Colonnes categorielles dont le modele reduit se passe : leur contribution SHAP
@@ -207,7 +208,8 @@ def train_classification_xgboost(
         save_model(
             model,
             datasets=training_extracts(df, features, split, target=TARGET),
-            dossier=ARTIFACTS_DOSSIER,
+            tache=ARTIFACTS_TACHE,
+            niveau=ARTIFACTS_NIVEAU,
             nom=nom,
             metadonnees={
                 "threshold": seuil,
@@ -215,9 +217,7 @@ def train_classification_xgboost(
                 "hyperparameters": retenus,
                 "features": features,
                 "sizes": split.tailles,
-                "test_metrics": {
-                    metrique: round(valeur, 4) for metrique, valeur in metrics.items()
-                },
+                "test_metrics": metrics,
             },
         )
         if enregistrer

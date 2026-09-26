@@ -116,6 +116,15 @@ REVENU_SPEC = ChartSpec(
     log_x=True,
 )
 
+# Cible du modele de regression : etalee de quelques centaines d'euros a deux
+# millions, d'ou l'echelle logarithmique comme pour le revenu.
+VALEUR_VIE_SPEC = ChartSpec(
+    column="valeur_vie_client_eur",
+    title="Distribution de la valeur vie client",
+    xlabel="Valeur vie client (EUR, scale log)",
+    log_x=True,
+)
+
 RETARDS_SPEC = ChartSpec(
     column="retards_paiement_12m",
     title="Nombre de clients par retards de paiement (12 mois)",
@@ -354,7 +363,7 @@ def plot_histograms(*, show: bool = True, echo: bool = True) -> list[Path]:
         _render_numeric_bars(_adoption_rate_counts(df), ADOPTION_SPEC, show=show)
     )
 
-    for spec in (DELAI_SPEC, HEURES_USAGE_SPEC, REVENU_SPEC):
+    for spec in (DELAI_SPEC, HEURES_USAGE_SPEC, REVENU_SPEC, VALEUR_VIE_SPEC):
         paths.append(_render_histogram(_numeric_values(df, spec), spec, show=show))
 
     if echo:

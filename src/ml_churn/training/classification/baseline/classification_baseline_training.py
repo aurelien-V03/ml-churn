@@ -48,7 +48,8 @@ EXCLUSIONS: dict[str, str] = {
 
 
 # Sous-dossier d'`artifacts/` et prefixe des fichiers enregistres.
-ARTIFACTS_DOSSIER = "baseline"
+ARTIFACTS_TACHE = "classification"
+ARTIFACTS_NIVEAU = "baseline"
 ARTIFACTS_NOM = "classification_baseline"
 
 
@@ -125,14 +126,15 @@ def train_classification_baseline(
     chemin = save_model(
         model,
         datasets=training_extracts(df, features, split, target=TARGET),
-        dossier=ARTIFACTS_DOSSIER,
+        tache=ARTIFACTS_TACHE,
+        niveau=ARTIFACTS_NIVEAU,
         nom=ARTIFACTS_NOM,
         metadonnees={
             "threshold": seuil,
             "target": TARGET,
             "features": features,
             "sizes": split.tailles,
-            "test_metrics": {nom: round(valeur, 4) for nom, valeur in metrics.items()},
+            "test_metrics": metrics,
         },
     )
 

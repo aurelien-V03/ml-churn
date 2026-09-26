@@ -8,7 +8,7 @@ import pandas as pd
 from sklearn.model_selection import train_test_split
 
 from ml_churn.ingestion.db import get_engine
-from ml_churn.ingestion.models import ChurnSaasGold
+from ml_churn.ingestion.models import ChurnSaasGold, ChurnSaasSilver
 
 # Colonnes jamais utilisables comme features, quel que soit le modele.
 EXCLUSIONS_COMMUNES: dict[str, str] = {
@@ -36,6 +36,12 @@ def load_gold() -> pd.DataFrame:
     return pd.read_sql(f"select * from {table}", get_engine())
 
 
+def load_silver() -> pd.DataFrame:
+    """Lit la table silver des clients."""
+    table = ChurnSaasSilver.__table__.fullname
+    return pd.read_sql(f"select * from {table}", get_engine())
+
+
 def feature_columns(target: str, exclusions: dict[str, str]) -> list[str]:
     """Colonnes de gold retenues comme features, dans l'ordre du modele."""
     return [
@@ -51,6 +57,24 @@ def feature_columns(target: str, exclusions: dict[str, str]) -> list[str]:
 TEST_SIZE = 0.2
 VALIDATION_SIZE = 0.2
 RANDOM_STATE = 42
+
+
+# Nombre de classes d'effectifs egaux pour stratifier une cible continue.
+QUANTILES_STRATIFICATION = 10
+
+
+def strates_quantiles(
+    y: pd.Series, quantiles: int = QUANTILES_STRATIFICATION
+) -> pd.Series:
+    """Decoupe une cible continue en classes d'effectifs egaux.
+
+    `train_test_split` ne sait stratifier que sur des classes : une valeur vie
+    client est quasi unique par client, elle ne peut pas servir telle quelle.
+    Les deciles, eux, garantissent que chaque jeu recoit sa part de petits et
+    de gros comptes -- ce qui compte sur une cible dont la variance est portee
+    par quelques clients extremes.
+    """
+    return pd.qcut(y, quantiles, labels=False, duplicates="drop")
 
 
 @dataclass(frozen=True)
@@ -78,23 +102,40 @@ class Split:
         }
 
 
-def split_train_validation_test(X: pd.DataFrame, y: pd.Series) -> Split:
+def split_train_validation_test(
+    X: pd.DataFrame, y: pd.Series, *, stratify: pd.Series | None = None
+) -> Split:
     """Decoupe en trois jeux stratifies, en deux temps.
 
     Le meme decoupage pour tous les modeles : leurs metriques restent
     comparables, et aucun n'a vu le test avant la mesure finale.
+
+    `stratify` designe la colonne qui equilibre les trois jeux ; a defaut, la
+    cible elle-meme. Une cible continue ne peut pas servir telle quelle, chaque
+    valeur y etant quasi unique : les modeles de regression passent ses
+    deciles, via `strates_quantiles`.
     """
-    X_reste, X_test, y_reste, y_test = train_test_split(
-        X, y, test_size=TEST_SIZE, random_state=RANDOM_STATE, stratify=y
+    repartition = y if stratify is None else stratify
+
+    X_reste, X_test, repartition_reste, _ = train_test_split(
+        X,
+        repartition,
+        test_size=TEST_SIZE,
+        random_state=RANDOM_STATE,
+        stratify=repartition,
     )
     # La part de validation est exprimee sur le total, d'ou le reajustement.
     part_validation = VALIDATION_SIZE / (1 - TEST_SIZE)
-    X_train, X_validation, y_train, y_validation = train_test_split(
+    X_train, X_validation = train_test_split(
         X_reste,
-        y_reste,
         test_size=part_validation,
         random_state=RANDOM_STATE,
-        stratify=y_reste,
+        stratify=repartition_reste,
+    )
+    y_train, y_validation, y_test = (
+        y.loc[X_train.index],
+        y.loc[X_validation.index],
+        y.loc[X_test.index],
     )
 
     return Split(

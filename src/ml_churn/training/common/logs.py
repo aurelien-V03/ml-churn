@@ -11,7 +11,14 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 
-from ml_churn.training.common.metrics import DESCRIPTIONS_OBJECTIFS, FORMULES
+from ml_churn.training.common.metrics import (
+    DESCRIPTIONS_OBJECTIFS,
+    FORMULES,
+    FORMULES_REGRESSION,
+)
+
+# Au-dela, la liste des features encombre le log plus qu'elle ne l'informe.
+MAX_FEATURES_LISTEES = 15
 
 
 def log_dataset(
@@ -30,11 +37,15 @@ def log_dataset(
     print(f"  {detail}  (churn {y_test.mean():.2%} dans le test)")
 
 
-def log_metrics(metrics: dict[str, float]) -> None:
+def log_metrics(
+    metrics: dict[str, float], formules: dict[str, str] | None = None
+) -> None:
     """Metriques du jeu de test, avec le rappel de leur formule."""
+    formules = formules or FORMULES
+
     print("\n[PERFORMANCE] sur le jeu de test")
     for nom, value in metrics.items():
-        print(f"  {nom:<21} {value:.2f}   {FORMULES[nom]}")
+        print(f"  {nom:<21} {value:>12.2f}   {formules[nom]}")
 
 
 def log_confusion_matrix(matrix: np.ndarray) -> None:
@@ -81,6 +92,37 @@ def log_feature_weights(
 def log_objective(objectif: str) -> None:
     """Objectif maximise par la recherche, et ce qu'il privilegie."""
     print(f"\n[OBJECTIF] {objectif} : {DESCRIPTIONS_OBJECTIFS[objectif]}")
+
+
+def log_regression_training(
+    *,
+    df: pd.DataFrame,
+    features: list[str],
+    tailles: dict[str, int],
+    y_test: pd.Series,
+    metrics: dict[str, float],
+) -> None:
+    """Bilan complet d'un entrainement de regression.
+
+    Pas de matrice de confusion ici : la sortie est continue, l'erreur se lit
+    dans l'unite de la cible plutot qu'en comptant des cas bien classes. Les
+    coefficients ne sont pas affichés non plus : ils restent accessibles dans
+    `Result.coefficients`.
+    """
+    print(f"[DONNEES] : {len(df)} clients, {len(features)} features")
+    # Quelques features se listent, des dizaines n'apportent rien a lire.
+    if len(features) <= MAX_FEATURES_LISTEES:
+        print(f"  retenues : {', '.join(features)}")
+    detail = " / ".join(
+        f"{nom.removeprefix('n_')} {taille}" for nom, taille in tailles.items()
+    )
+    print(f"  {detail}")
+    print(
+        f"  cible sur le test : mediane {y_test.median():,.0f} €, "
+        f"moyenne {y_test.mean():,.0f} €, max {y_test.max():,.0f} €"
+    )
+
+    log_metrics(metrics, FORMULES_REGRESSION)
 
 
 def log_carbon_footprint(
