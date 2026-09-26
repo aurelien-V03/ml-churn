@@ -82,41 +82,6 @@ livrable :
 
 ### Etapes
 
-# 1. Cadrage métier
-
-### Définition des KPI métier :
-
-Churn
-- Taux de churn : clients ayant résiliés / clients total (définir un niveau auquel il ne faut pas passer en dessous)
-- Nombre de client sauvés : nombre de client qui souhaités résilier leur abonnement mais ont changés d'avis
-
--> l'objectif est de garder un maximum de client
-
-Valeur vie client
-- Ecart estimation CLV - CLV a un instant T 
-
--> l'objectif est d'avoir un indicateur permettant de juger de la marge de profit restante, l'objectif est donc de rapprocher ces valeurs pour maximiser le chiffre d'affaire
-
-### FP vs FN (problème de classification)
-
-Faux positifs = le modèle prédit une resiliation alors que le client ne prévoit pas de résilier (fausse alerte)
-Faux négatifs = le modèle prédit une non-résiliation alors que le client prévoit de résilier (résiliation manquée)
-
-Les faux positifs sont moins grave que les faux négatifs car ils impliquent principalement du temps d'investigation de la part du CSM et un dérangement du client, alors que les faux négatifs impliquent une perte de chiffre d'affaire immédiate.
-
-### Hypothèse
-
-La resiliation est à ces raisons :
-- satisfaction client
-    - support de qualité (peu de demande et traitement rapide) : tickets_support_90j / delai_reponse_support_h 
-    - services offert sont utilisés et il y a une part importante d'utilisateur actif (correspond à la demande de l'utilisateur) : fonctionnalites_utilisees / taux_adoption_pct 
-    - appreciation du produit : csat
-- Bon payeur
-    - grosse entreprise : taille_entreprise 
-    - pas de retard de paiement : retards_paiement_12m 
-
-
-
 # 2. Choix du type de modèle
 
 On connait le label (ce que l'on veut prédire = churn) donc il s'agit d'un problème de machine learning
