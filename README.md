@@ -18,7 +18,7 @@ src/
 ├── ml_churn/               Package installé (`uv run python -m ml_churn...`)
 │   ├── api/                Service FastAPI : /health, /ready, /predict
 │   │   └── data/           Schémas Pydantic des requêtes et réponses
-│   ├── ui/                 Page de test : index.html, style.css, app.js
+│   ├── ui/                 Page de test : index.html, style.css, app.js, clients.js
 │   ├── ingestion/          Médaillon : CSV → bronze → silver → gold
 │   │   ├── db.py           Connexion PostgreSQL
 │   │   ├── logs.py         Format de log commun aux trois couches
@@ -400,11 +400,12 @@ uv run uvicorn ml_churn.api.main:app --reload
 Page de test sur <http://127.0.0.1:8000/> et documentation interactive sur
 <http://127.0.0.1:8000/docs>.
 
-La page (`ui/index.html`) présente un champ par colonne attendue, un
-bouton **Remplir** qui tire des valeurs au hasard dans l'intervalle observé sur
-le jeu d'entraînement, et un bouton **Prédire** qui appelle `/predict` et
-affiche les quatre champs de la réponse. Elle est servie par l'API elle-même :
-même origine, donc aucune configuration CORS.
+La page (`ui/`) affiche vingt clients tirés au hasard du jeu de test et
+légèrement modifiés, stockés dans `clients.js`. Le bouton **Prédire** appelle
+`/predict` une fois par client et remplit les deux dernières colonnes du
+tableau, distinguées par leur couleur : `churn` prédit, et `estimation vie
+client` laissée vide en attendant le modèle de régression. Elle est servie par
+l'API elle-même : même origine, donc aucune configuration CORS.
 
 | Endpoint | Rôle | Réponse |
 | --- | --- | --- |

@@ -8,8 +8,9 @@
 </head>
 <body>
   <h1>ml-churn — test de l'API</h1>
-  <p class="subtitle">Les 24 colonnes attendues par le modèle XGBoost. « Remplir » tire des
-     valeurs au hasard dans l'intervalle observé sur le jeu d'entraînement.</p>
+  <p class="subtitle">Vingt clients tirés du jeu de test et légèrement modifiés.
+     Les prédictions partent seules dès que le service répond, un appel à
+     <code>/predict</code> par client.</p>
 
   <div class="status" id="status">
     <span class="dot" id="dot-health"></span><code>/health</code>
@@ -17,23 +18,24 @@
     <span class="status-detail" id="status-detail">vérification…</span>
   </div>
 
-  <div class="columns">
-    <form id="form" autocomplete="off">
-      <div class="field model">
-        <label for="model">modèle</label>
-        <select id="model" name="model">
-          <option value="xgboost">xgboost</option>
-        </select>
-      </div>
-    </form>
-
-    <aside>
-      <h2>Prédiction</h2>
-      <dl id="result"><dd class="vide">Aucune prédiction pour l'instant.</dd></dl>
-      <p id="error" class="error"></p>
-    </aside>
+  <div class="toolbar">
+    <label for="model">modèle</label>
+    <select id="model" name="model">
+      <option value="xgboost">xgboost</option>
+    </select>
+    <span class="progress" id="progress"></span>
   </div>
 
+  <p id="error" class="error"></p>
+
+  <div class="table-wrapper">
+    <table id="clients">
+      <thead><tr id="head"></tr></thead>
+      <tbody id="body"></tbody>
+    </table>
+  </div>
+
+  <script src="clients.js"></script>
   <script src="app.js"></script>
 </body>
 </html>
