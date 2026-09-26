@@ -89,6 +89,9 @@ avec apprentissage supervisé
 
 # 3. Visualisation des données sous forme graphique
 
+Source : la table `bronze.churn_saas_complet_bronze`, où le CSV est stocké tel
+quel — l'ingestion bronze doit donc avoir tourné.
+
 Scripts de génération : `src/visualization/scripts`
 Graphiques générés : `src/visualization/graphs`
 

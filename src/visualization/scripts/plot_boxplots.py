@@ -21,7 +21,7 @@ import matplotlib.pyplot as plt
 import pandas as pd
 
 from visualization.scripts.common import (
-    CSV_PATH,
+    SOURCE,
     export_figure,
     load_dataset,
     numeric_column,
@@ -107,7 +107,7 @@ def plot_boxplots(*, show: bool = True, echo: bool = True) -> list[Path]:
     """Genere un boxplot par variable numerique. Retourne les PNG exportes."""
     df = load_dataset()
     if echo:
-        print(f"{CSV_PATH.name} : {len(df)} lignes lues")
+        print(f"{SOURCE} : {len(df)} lignes lues")
 
     paths: list[Path] = []
     for spec in BOXPLOTS:

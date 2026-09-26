@@ -1,8 +1,12 @@
 """Briques partagees par les scripts de visualisation.
 
 Chaque type de graphique a son script (`plot_histograms.py` pour les
-histogrammes, `plot_boxplots.py` pour les boites a moustaches) ; la lecture du
-CSV et l'export des figures sont communs.
+histogrammes, `plot_boxplots.py` pour les boites a moustaches) ; la lecture des
+donnees et l'export des figures sont communs.
+
+Les graphiques sont construits sur la couche bronze, ou le CSV est stocke tel
+quel : memes valeurs brutes qu'a l'origine, mais lues depuis la base plutot que
+du fichier. L'ingestion bronze doit donc avoir tourne.
 """
 
 from __future__ import annotations
@@ -12,14 +16,28 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 import pandas as pd
 
+from ml_churn.ingestion.db import get_engine
+from ml_churn.ingestion.models.bronze import ChurnSaasCompletBronze
+
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
-CSV_PATH = PROJECT_ROOT / "docs" / "churn_saas_complet.csv"
 GRAPHS_DIR = PROJECT_ROOT / "src" / "visualization" / "graphs"
+
+# Table lue par tous les scripts, et libelle affiche dans leurs logs.
+SOURCE = ChurnSaasCompletBronze.__table__.fullname
+
+# Colonnes ajoutees par l'ingestion : sans interet pour l'exploration.
+COLONNES_TECHNIQUES = ("id", "_source_file", "_source_line", "_ingested_at")
 
 
 def load_dataset() -> pd.DataFrame:
-    """Tout en texte : le CSV brut n'est pas encore type (couche bronze)."""
-    return pd.read_csv(CSV_PATH, dtype=str, encoding="utf-8-sig", keep_default_na=False)
+    """Couche bronze : le CSV stocke tel quel, tout en texte.
+
+    Les valeurs manquantes reviennent en `None` depuis la base ; elles sont
+    ramenees a la chaine vide, comme lors de la lecture du CSV, pour que les
+    comptages par modalite restent inchanges.
+    """
+    df = pd.read_sql(f"select * from {SOURCE} order by _source_line", get_engine())
+    return df.drop(columns=list(COLONNES_TECHNIQUES)).fillna("")
 
 
 def numeric_column(df: pd.DataFrame, column: str) -> pd.Series:

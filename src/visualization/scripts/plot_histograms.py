@@ -1,8 +1,8 @@
-"""Graphiques exploratoires sur le dataset churn brut (docs/churn_saas_complet.csv).
+"""Graphiques exploratoires sur le dataset churn brut, lu en couche bronze.
 
-Lecture directe du CSV, donc utilisable avant toute ingestion en base.
-Les valeurs categorielles sont normalisees (casse et espaces parasites) : le
-CSV contient par exemple "TPE", " TPE " et "tpe", qui designent la meme chose.
+Les valeurs categorielles sont normalisees (casse et espaces parasites) : la
+table contient par exemple "TPE", " TPE " et "tpe", qui designent la meme
+chose.
 
 Un PNG par graphique dans src/visualization/graphs, nomme
 <date>_<type_de_donnee>.png.
@@ -21,11 +21,14 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
-PROJECT_ROOT = Path(__file__).resolve().parents[3]
-CSV_PATH = PROJECT_ROOT / "docs" / "churn_saas_complet.csv"
-GRAPHS_DIR = PROJECT_ROOT / "src" / "visualization" / "graphs"
+from visualization.scripts.common import (
+    GRAPHS_DIR,
+    PROJECT_ROOT,
+    SOURCE,
+    load_dataset,
+)
 
-# Les trois formats de date presents dans le CSV brut.
+# Les trois formats de date presents dans les donnees brutes.
 DATE_FORMATS: tuple[str, ...] = ("%Y-%m-%d", "%d/%m/%Y", "%d %b %Y")
 
 # Ordre naturel de la semaine, sinon matplotlib trie par frequence.
@@ -180,11 +183,6 @@ ANCIENNETE_SPEC = ChartSpec(
 )
 
 
-def load_dataset() -> pd.DataFrame:
-    """Tout en texte : le CSV brut n'est pas encore type (couche bronze)."""
-    return pd.read_csv(CSV_PATH, dtype=str, encoding="utf-8-sig", keep_default_na=False)
-
-
 def _normalize(series: pd.Series) -> pd.Series:
     """Aligne les variantes de casse et d'espaces, et ecarte les valeurs vides."""
     cleaned = series.astype("string").str.strip().str.casefold()
@@ -332,7 +330,7 @@ def plot_histograms(*, show: bool = True, echo: bool = True) -> list[Path]:
     """Genere les six graphiques et retourne les chemins des PNG exportes."""
     df = load_dataset()
     if echo:
-        print(f"{CSV_PATH.name} : {len(df)} lignes lues")
+        print(f"{SOURCE} : {len(df)} lignes lues")
 
     paths = [_render(_subscription_date_counts(df), DATE_SPEC, show=show)]
     paths += [_render(_counts(df, spec), spec, show=show) for spec in CHARTS]

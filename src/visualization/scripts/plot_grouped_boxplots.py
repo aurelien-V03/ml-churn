@@ -16,7 +16,7 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 import pandas as pd
 
-from visualization.scripts.common import CSV_PATH, export_figure, load_dataset
+from visualization.scripts.common import SOURCE, export_figure, load_dataset
 
 # Ces graphiques croisent deux colonnes : ils ne peuvent pas aller dans le
 # dossier de l'une d'elles, d'ou un dossier propre au type.
@@ -90,7 +90,7 @@ def plot_grouped_boxplots(*, show: bool = True, echo: bool = True) -> list[Path]
     """Genere un boxplot groupe par relation. Retourne les PNG exportes."""
     df = load_dataset()
     if echo:
-        print(f"{CSV_PATH.name} : {len(df)} lignes lues")
+        print(f"{SOURCE} : {len(df)} lignes lues")
 
     paths: list[Path] = []
     for spec in GROUPED_BOXPLOTS:

@@ -18,7 +18,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
-from visualization.scripts.common import CSV_PATH, export_figure, load_dataset
+from visualization.scripts.common import SOURCE, export_figure, load_dataset
 
 # Ce graphique croise une colonne avec la cible : dossier propre au type.
 FOLDER = "churn_rate"
@@ -171,7 +171,7 @@ def plot_churn_rates(*, show: bool = True, echo: bool = True) -> list[Path]:
     """Genere un graphique de taux de churn par variable. Retourne les PNG."""
     df = load_dataset()
     if echo:
-        print(f"{CSV_PATH.name} : {len(df)} lignes lues")
+        print(f"{SOURCE} : {len(df)} lignes lues")
 
     paths: list[Path] = []
     for spec in CHURN_RATES:
