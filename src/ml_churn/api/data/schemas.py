@@ -48,3 +48,9 @@ class PredictClvResponse(BaseModel):
 
     model: str
     lifetime_value_eur: float = Field(description="Valeur vie client estimee, en euros")
+
+
+class UiConfigResponse(BaseModel):
+    """Ce dont la page de test a besoin pour appeler le service."""
+
+    api_key: str = Field(description="Cle attendue dans l'en-tete X-API-Key")

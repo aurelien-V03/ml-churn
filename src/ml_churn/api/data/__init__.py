@@ -6,6 +6,7 @@ from ml_churn.api.data.schemas import (
     PredictClvResponse,
     PredictRequest,
     ReadyResponse,
+    UiConfigResponse,
 )
 
 __all__ = [
@@ -14,4 +15,5 @@ __all__ = [
     "PredictClvResponse",
     "PredictRequest",
     "ReadyResponse",
+    "UiConfigResponse",
 ]

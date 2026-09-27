@@ -19,7 +19,10 @@ p.subtitle { margin: 0 0 20px; opacity: .7; }
 .toolbar { display: flex; align-items: center; gap: 12px; margin-bottom: 14px; }
 .progress { font-size: .85rem; opacity: .7; font-variant-numeric: tabular-nums; }
 
-.table-wrapper { overflow-x: auto; border: 1px solid var(--border); border-radius: 10px; }
+/* `fit-content` : le cadre epouse la largeur du tableau au lieu de s'etaler
+   sur toute la page, `max-width` le ramene au defilement quand il deborde. */
+.table-wrapper { overflow-x: auto; border: 1px solid var(--border); border-radius: 10px;
+                 width: fit-content; max-width: 100%; }
 table { border-collapse: collapse; font-size: .8rem; white-space: nowrap; }
 th, td { padding: 7px 10px; text-align: right; border-bottom: 1px solid var(--border); }
 th { position: sticky; top: 0; font-family: ui-monospace, monospace; font-weight: 600;

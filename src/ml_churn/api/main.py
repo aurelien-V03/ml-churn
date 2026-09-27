@@ -1,9 +1,14 @@
 """API REST exposant les modeles de prediction.
 
+Les deux endpoints de prediction exigent la cle d'API (`X-API-Key`), sont
+limites a 60 appels par minute et refusent un corps de plus de 64 ko. Voir
+`api/security`.
+
 Quatre endpoints :
 
 - `GET /health`       : le service repond, sans rien supposer des modeles.
 - `GET /ready`        : les deux familles de modeles sont entrainees.
+- `GET /ui-config`    : cle d'API remise a la page de test (developpement).
 - `POST /predict-churn` : probabilite de churn d'un client.
 - `POST /predict-clv`   : valeur vie client estimee, en euros.
 
@@ -35,9 +40,16 @@ from ml_churn.api.data import (
     PredictClvResponse,
     PredictRequest,
     ReadyResponse,
+    UiConfigResponse,
 )
 from ml_churn.api.registry import MODELES as FABRIQUES
 from ml_churn.api.registry import Modele, entrainer_tout
+from ml_churn.api.security import (
+    ApiKeyMiddleware,
+    BodySizeLimitMiddleware,
+    RateLimitMiddleware,
+)
+from ml_churn.api.security.api_key_middleware import expected_key
 
 # Page de test de l'API, servie a la racine. Elle vit hors du package `api` :
 # c'est une interface, pas une brique du service.
@@ -67,9 +79,18 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+# Les middlewares s'empilent : le dernier ajoute est le premier traverse. La
+# taille du corps est donc verifiee avant le quota, lui-meme avant la cle --
+# du controle le moins cher au plus cher.
+app.add_middleware(ApiKeyMiddleware)
+app.add_middleware(RateLimitMiddleware)
+app.add_middleware(BodySizeLimitMiddleware)
+
 # La page servie a la racine n'en a pas besoin -- meme origine -- mais elle
 # reste utilisable ouverte directement depuis le disque, ou l'origine vaut
 # `null`. Service local de developpement : toutes les origines sont admises.
+# `x-api-key` doit figurer parmi les en-tetes autorises, sans quoi le
+# navigateur refuserait la requete avant de l'envoyer.
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -126,6 +147,18 @@ def ready() -> ReadyResponse:
         ready=True,
         models={famille: sorted(modeles) for famille, modeles in MODELES.items()},
     )
+
+
+@app.get("/ui-config", response_model=UiConfigResponse)
+def ui_config() -> UiConfigResponse:
+    """Cle d'API remise a la page de test, qui n'a pas acces au `.env`.
+
+    Elle n'est donc pas secrete pour qui peut joindre le service : cet endpoint
+    est une commodite de developpement, a retirer avant toute exposition
+    reseau -- la protection par cle ne vaudrait plus que contre les clients qui
+    ignorent son existence.
+    """
+    return UiConfigResponse(api_key=expected_key() or "")
 
 
 @app.post("/predict-churn", response_model=PredictChurnResponse)

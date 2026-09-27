@@ -10,7 +10,9 @@ wheels/
 .venv
 
 # Env local
+.env
 .env.*
+.env.example
 
 # Suivi des experimentations MLflow
 mlflow.db

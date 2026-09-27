@@ -416,6 +416,7 @@ par l'API elle-même : même origine, donc aucune configuration CORS.
 | --- | --- | --- |
 | `GET /health` | Le service répond | `{"status": "ok"}` |
 | `GET /ready` | Les deux familles de modèles sont entraînées | `{"ready": true, "models": {"churn": ["xgboost"], "clv": ["xgboost"]}}`, ou 503 |
+| `GET /ui-config` | Clé d'API remise à la page de test | `{"api_key": "…"}` |
 | `POST /predict-churn` | Probabilité de churn d'un client | `{"model", "probability", "threshold", "churn"}` |
 | `POST /predict-clv` | Valeur vie client estimée | `{"model", "lifetime_value_eur"}` |
 
@@ -446,6 +447,45 @@ Codes d'erreur : **404** si le modèle demandé n'existe pas (avec la liste des
 modèles disponibles), **422** s'il manque des colonnes (avec leur liste) ou si
 une valeur n'est pas numérique.
 
+### Protections
+
+Trois middlewares dans `api/security/`, traversés dans cet ordre — du contrôle
+le moins cher au plus cher :
+
+| Middleware | Règle | Refus |
+| --- | --- | --- |
+| `BodySizeLimitMiddleware` | corps de 64 ko au maximum | **413** |
+| `RateLimitMiddleware` | 400 appels/minute sur `/predict-*`, 60 sur le reste, par IP | **429**, avec `retry-after` |
+| `ApiKeyMiddleware` | en-tête `X-API-Key` sur les `POST` | **401** |
+
+La clé est lue dans `FAST_API_KEY` (`.env` à la racine, modèle dans
+`.env.example`). Sans clé configurée, le service répond **503** à toute
+prédiction plutôt que de s'ouvrir par inadvertance. `/health`, `/ready`, la
+documentation et la page de test restent accessibles sans clé : une sonde
+d'orchestrateur ne s'authentifie pas.
+
+```bash
+curl -X POST http://127.0.0.1:8000/predict-churn \
+  -H "x-api-key: $FAST_API_KEY" \
+  -H 'content-type: application/json' \
+  -d '{"model": "xgboost", "data": {…}}'
+```
+
+Les deux budgets sont comptés séparément : la page interroge les sondes toutes
+les 5 secondes, soit 24 appels par minute, qui ne doivent pas grever ceux dont
+les prédictions ont besoin. Chaque réponse porte `x-ratelimit-limit` et
+`x-ratelimit-remaining` du budget concerné.
+
+Le quota est compté en mémoire du processus : derrière plusieurs workers, la
+limite effective est multipliée par leur nombre. Un compteur partagé (Redis)
+serait nécessaire pour une limite globale.
+
+La page de test récupère la clé auprès du service, via `GET /ui-config` : elle
+n'a pas accès au `.env`. **Cet endpoint est une commodité de développement** —
+qui peut joindre le service peut lire la clé, donc la protection ne vaut plus
+que contre les clients qui ignorent son existence. À retirer avant toute
+exposition réseau.
+
 Les modèles exposés sont déclarés dans `MODELES`, à la fin de
 `api/registry.py` : une entrée par famille (`churn`, `clv`), puis une par
 modèle, associant le nom public à la fonction qui l'entraîne. Les
@@ -456,3 +496,5 @@ sont figées en tête du même fichier.
 
 - bien penser a versionner les modeles avec leurs donnes
 - ajouter makefile
+- train/test contamination ? spliter avant le prepocessing
+- mettre clé API dans FastAPI

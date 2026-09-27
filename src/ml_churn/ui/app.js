@@ -34,6 +34,15 @@ const PREDICTED = [
   { key: "lifetime", label: "estimation vie client" },
 ];
 
+// The key comes from the service, which reads it from the `.env` the page has
+// no access to. Fetched once, before the first prediction.
+let API_KEY = "";
+
+async function loadApiKey() {
+  const response = await fetch(`${API}/ui-config`, { cache: "no-store" });
+  API_KEY = (await response.json()).api_key;
+}
+
 const head = document.getElementById("head");
 const body = document.getElementById("body");
 const progress = document.getElementById("progress");
@@ -74,7 +83,7 @@ function buildTable() {
 async function ask(path, data) {
   const response = await fetch(`${API}${path}`, {
     method: "POST",
-    headers: { "content-type": "application/json" },
+    headers: { "content-type": "application/json", "x-api-key": API_KEY },
     body: JSON.stringify({ model: MODEL, data }),
   });
   const payload = await response.json();
@@ -112,6 +121,17 @@ let running = false;
 
 async function predictAll() {
   if (running) return;
+
+  try {
+    if (!API_KEY) await loadApiKey();
+  } catch (failure) {
+    error.textContent = `Clé d'API indisponible : ${failure.message}`;
+    return;
+  }
+  if (!API_KEY) {
+    error.textContent = "FAST_API_KEY n'est pas configurée côté service.";
+    return;
+  }
   running = true;
   error.textContent = "";
 
