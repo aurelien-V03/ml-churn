@@ -48,21 +48,72 @@ const body = document.getElementById("body");
 const progress = document.getElementById("progress");
 const error = document.getElementById("error");
 
-function buildTable() {
-  for (const name of DISPLAYED) {
-    const cell = document.createElement("th");
-    cell.textContent = name;
-    head.appendChild(cell);
-  }
-  for (const { label } of PREDICTED) {
-    const cell = document.createElement("th");
-    cell.textContent = label;
-    cell.className = "predicted";
-    head.appendChild(cell);
-  }
+// Predictions, kept by client index: the table is redrawn on every sort and
+// must be able to restore what has already been predicted.
+const PREDICTIONS = new Map();
 
-  CLIENTS.forEach((client, index) => {
+// Column currently sorted, and its direction. `null` keeps the source order.
+let sortedBy = null;
+let ascending = true;
+
+function columnValue(index, column) {
+  const prediction = PREDICTIONS.get(index);
+  // Not predicted yet: pushed to the end whatever the direction.
+  if (column === "churn") return prediction?.probability ?? -1;
+  if (column === "lifetime") return prediction?.lifetime ?? -1;
+
+  const raw = CLIENTS[index][column];
+  return typeof raw === "number" ? raw : String(raw);
+}
+
+function sortedOrder() {
+  const order = CLIENTS.map((_, index) => index);
+  if (sortedBy === null) return order;
+
+  return order.sort((left, right) => {
+    const a = columnValue(left, sortedBy);
+    const b = columnValue(right, sortedBy);
+    const sens = ascending ? 1 : -1;
+    if (a < b) return -sens;
+    if (a > b) return sens;
+    return 0;
+  });
+}
+
+function buildHead() {
+  const columns = [
+    ...DISPLAYED.map((name) => ({ key: name, label: name, predicted: false })),
+    ...PREDICTED.map(({ key, label }) => ({ key, label, predicted: true })),
+  ];
+
+  // Redessine l'en-tete : la fleche du tri change de colonne a chaque clic.
+  head.replaceChildren();
+
+  for (const { key, label, predicted } of columns) {
+    const sorted = key === sortedBy;
+    const cell = document.createElement("th");
+    cell.dataset.column = key;
+    cell.textContent = sorted ? `${label} ${ascending ? "▲" : "▼"}` : label;
+    cell.classList.toggle("predicted", predicted);
+    cell.classList.toggle("sorted", sorted);
+    // Un clic trie, un second inverse le sens.
+    cell.addEventListener("click", () => {
+      ascending = sortedBy === key ? !ascending : true;
+      sortedBy = key;
+      buildHead();
+      renderRows();
+    });
+    head.appendChild(cell);
+  }
+}
+
+function renderRows() {
+  body.replaceChildren();
+
+  for (const index of sortedOrder()) {
+    const client = CLIENTS[index];
     const row = document.createElement("tr");
+
     for (const name of DISPLAYED) {
       const cell = document.createElement("td");
       cell.textContent = client[name];
@@ -75,8 +126,24 @@ function buildTable() {
       cell.textContent = "—";
       row.appendChild(cell);
     }
+
     body.appendChild(row);
-  });
+    showPrediction(index);
+  }
+}
+
+function showPrediction(index) {
+  const prediction = PREDICTIONS.get(index);
+  if (!prediction) return;
+
+  const churnCell = document.getElementById(`churn-${index}`);
+  churnCell.textContent = `${prediction.churn ? "oui" : "non"} (${prediction.probability})`;
+  churnCell.classList.toggle("churn-true", prediction.churn);
+  churnCell.classList.toggle("churn-false", !prediction.churn);
+
+  document.getElementById(`lifetime-${index}`).textContent = EUROS.format(
+    prediction.lifetime,
+  );
 }
 
 // One call per client and per endpoint: each scores a single row at a time.
@@ -106,14 +173,12 @@ async function predictOne(client, index) {
     ask("/predict-clv", data),
   ]);
 
-  const churnCell = document.getElementById(`churn-${index}`);
-  churnCell.textContent = `${churn.churn ? "oui" : "non"} (${churn.probability})`;
-  churnCell.classList.toggle("churn-true", churn.churn);
-  churnCell.classList.toggle("churn-false", !churn.churn);
-
-  document.getElementById(`lifetime-${index}`).textContent = EUROS.format(
-    clv.lifetime_value_eur,
-  );
+  PREDICTIONS.set(index, {
+    probability: churn.probability,
+    churn: churn.churn,
+    lifetime: clv.lifetime_value_eur,
+  });
+  showPrediction(index);
 }
 
 // Guards the loop: a restart must not overlap a run already going.
@@ -192,6 +257,7 @@ async function refreshStatus() {
   served = pret;
 }
 
-buildTable();
+buildHead();
+renderRows();
 refreshStatus();
 setInterval(refreshStatus, STATUS_PERIOD_MS);

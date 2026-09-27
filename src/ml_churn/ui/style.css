@@ -27,7 +27,10 @@ table { border-collapse: collapse; font-size: .8rem; white-space: nowrap; }
 th, td { padding: 7px 10px; text-align: right; border-bottom: 1px solid var(--border); }
 th { position: sticky; top: 0; font-family: ui-monospace, monospace; font-weight: 600;
      font-size: .72rem; text-align: right; background: var(--surface);
-     color: var(--on-surface); border-bottom: 2px solid var(--border); }
+     color: var(--on-surface); border-bottom: 2px solid var(--border);
+     cursor: pointer; user-select: none; white-space: pre; }
+th:hover { background: color-mix(in srgb, var(--accent) 12%, var(--surface)); }
+th.sorted { border-bottom-color: var(--accent); }
 tbody tr:last-child td { border-bottom: none; }
 tbody tr:hover td { background: color-mix(in srgb, var(--accent) 7%, transparent); }
 td:first-child, th:first-child { text-align: left; font-family: ui-monospace, monospace;
