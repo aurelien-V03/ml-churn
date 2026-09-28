@@ -54,3 +54,32 @@ class UiConfigResponse(BaseModel):
     """Ce dont la page de test a besoin pour appeler le service."""
 
     api_key: str = Field(description="Cle attendue dans l'en-tete X-API-Key")
+
+
+class DriftRequest(BaseModel):
+    """Population courante a comparer a celle de l'entrainement."""
+
+    data: list[dict[str, Any]] = Field(
+        description="Lignes observees, colonnes de la couche gold"
+    )
+
+
+class ColonneDeriveResponse(BaseModel):
+    """Derive mesuree sur une colonne."""
+
+    column: str
+    ks: float = Field(description="Ecart maximal entre les deux repartitions")
+    p_value: float = Field(description="Sous 0.05, l'ecart n'est pas un hasard")
+    psi: float = Field(description="Population Stability Index")
+    verdict: str = Field(description="stable, moderee ou importante")
+    # Calcule sur la p-valeur complete : arrondie, une valeur de 0.049
+    # deviendrait 0.05 et cesserait d'etre signalee.
+    significant: bool = Field(description="p-valeur sous 0.05")
+
+
+class DriftResponse(BaseModel):
+    """Derive entre la population d'entrainement et une population courante."""
+
+    reference: str = Field(description="Fichier servant de reference")
+    current: str = Field(description="Fichier compare a la reference")
+    columns: list[ColonneDeriveResponse]

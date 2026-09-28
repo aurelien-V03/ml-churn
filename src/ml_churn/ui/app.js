@@ -48,6 +48,10 @@ const body = document.getElementById("body");
 const progress = document.getElementById("progress");
 const error = document.getElementById("error");
 
+// Clients shown at once. The predictions, they, cover the whole set.
+const PAGE_SIZE = 20;
+let page = 0;
+
 // Predictions, kept by client index: the table is redrawn on every sort and
 // must be able to restore what has already been predicted.
 const PREDICTIONS = new Map();
@@ -100,6 +104,8 @@ function buildHead() {
     cell.addEventListener("click", () => {
       ascending = sortedBy === key ? !ascending : true;
       sortedBy = key;
+      // Trier renvoie au debut : rester page 4 apres un tri n'a aucun sens.
+      page = 0;
       buildHead();
       renderRows();
     });
@@ -107,10 +113,33 @@ function buildHead() {
   }
 }
 
+function pageCount() {
+  return Math.max(1, Math.ceil(CLIENTS.length / PAGE_SIZE));
+}
+
+function renderPagination() {
+  const premier = page * PAGE_SIZE;
+  document.getElementById("page-indicator").textContent =
+    `${premier + 1} – ${Math.min(premier + PAGE_SIZE, CLIENTS.length)} sur ${CLIENTS.length}` +
+    `  ·  page ${page + 1} / ${pageCount()}`;
+  document.getElementById("previous").disabled = page === 0;
+  document.getElementById("next").disabled = page >= pageCount() - 1;
+}
+
+function goToPage(numero) {
+  page = Math.min(Math.max(numero, 0), pageCount() - 1);
+  renderRows();
+}
+
+document.getElementById("previous").addEventListener("click", () => goToPage(page - 1));
+document.getElementById("next").addEventListener("click", () => goToPage(page + 1));
+
 function renderRows() {
   body.replaceChildren();
+  renderPagination();
 
-  for (const index of sortedOrder()) {
+  // Le tri porte sur l'ensemble des clients, la page n'en montre qu'une tranche.
+  for (const index of sortedOrder().slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE)) {
     const client = CLIENTS[index];
     const row = document.createElement("tr");
 
@@ -134,9 +163,10 @@ function renderRows() {
 
 function showPrediction(index) {
   const prediction = PREDICTIONS.get(index);
-  if (!prediction) return;
-
   const churnCell = document.getElementById(`churn-${index}`);
+  // Le client peut appartenir a une autre page : sa ligne n'existe pas.
+  if (!prediction || !churnCell) return;
+
   churnCell.textContent = `${prediction.churn ? "oui" : "non"} (${prediction.probability})`;
   churnCell.classList.toggle("churn-true", prediction.churn);
   churnCell.classList.toggle("churn-false", !prediction.churn);
@@ -219,6 +249,56 @@ async function predictAll() {
 
 
 
+// Drift report: the service compares the training extract to the current one.
+const DRIFT_COLUMNS = [
+  { key: "column", label: "colonne" },
+  { key: "psi", label: "PSI" },
+  { key: "ks", label: "KS" },
+  { key: "p_value", label: "p-value" },
+  { key: "verdict", label: "verdict" },
+];
+
+async function loadDrift() {
+  // La population courante, ce sont les clients affiches : ils partent au
+  // service, qui les compare a l'extrait ayant servi a l'entrainement.
+  const data = CLIENTS.map(({ client_id, ...features }) => features);
+
+  const response = await fetch(`${API}/drift`, {
+    method: "POST",
+    headers: { "content-type": "application/json", "x-api-key": API_KEY },
+    body: JSON.stringify({ data }),
+  });
+  if (!response.ok) return;
+  const report = await response.json();
+
+  document.getElementById("drift-source").textContent =
+    `${report.reference} (référence) comparé à ${report.current} — ` +
+    `PSI sous 0.10 : stable, sous 0.25 : dérive modérée, au-delà : importante.`;
+
+  const head = document.getElementById("drift-head");
+  head.replaceChildren();
+  for (const { label } of DRIFT_COLUMNS) {
+    const cell = document.createElement("th");
+    cell.textContent = label;
+    head.appendChild(cell);
+  }
+
+  const body = document.getElementById("drift-body");
+  body.replaceChildren();
+  for (const ligne of report.columns) {
+    const row = document.createElement("tr");
+    for (const { key } of DRIFT_COLUMNS) {
+      const cell = document.createElement("td");
+      cell.textContent = ligne[key];
+      if (key === "verdict") cell.className = `verdict-${ligne.verdict}`;
+      // Le service tranche sur la p-valeur complete, pas sur celle arrondie.
+      if (key === "p_value" && ligne.significant) cell.className = "significatif";
+      row.appendChild(cell);
+    }
+    body.appendChild(row);
+  }
+}
+
 async function probe(path) {
   try {
     const response = await fetch(`${API}${path}`, { cache: "no-store" });
@@ -261,3 +341,5 @@ buildHead();
 renderRows();
 refreshStatus();
 setInterval(refreshStatus, STATUS_PERIOD_MS);
+
+loadApiKey().then(loadDrift);

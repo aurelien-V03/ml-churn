@@ -1,6 +1,9 @@
 """Schemas des requetes et des reponses du service."""
 
 from ml_churn.api.data.schemas import (
+    ColonneDeriveResponse,
+    DriftRequest,
+    DriftResponse,
     HealthResponse,
     PredictChurnResponse,
     PredictClvResponse,
@@ -10,6 +13,9 @@ from ml_churn.api.data.schemas import (
 )
 
 __all__ = [
+    "ColonneDeriveResponse",
+    "DriftRequest",
+    "DriftResponse",
     "HealthResponse",
     "PredictChurnResponse",
     "PredictClvResponse",

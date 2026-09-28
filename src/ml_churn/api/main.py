@@ -9,6 +9,7 @@ Quatre endpoints :
 - `GET /health`       : le service repond, sans rien supposer des modeles.
 - `GET /ready`        : les deux familles de modeles sont entrainees.
 - `GET /ui-config`    : cle d'API remise a la page de test (developpement).
+- `POST /drift`       : derive entre l'entrainement et les lignes transmises.
 - `POST /predict-churn` : probabilite de churn d'un client.
 - `POST /predict-clv`   : valeur vie client estimee, en euros.
 
@@ -30,11 +31,15 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from pathlib import Path
 
+import pandas as pd
 from fastapi import FastAPI, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from ml_churn.api.data import (
+    ColonneDeriveResponse,
+    DriftRequest,
+    DriftResponse,
     HealthResponse,
     PredictChurnResponse,
     PredictClvResponse,
@@ -50,10 +55,16 @@ from ml_churn.api.security import (
     RateLimitMiddleware,
 )
 from ml_churn.api.security.api_key_middleware import expected_key
+from ml_churn.drift import rapport_derive
+from ml_churn.training.common.artifacts import ARTIFACTS_DIR
 
 # Page de test de l'API, servie a la racine. Elle vit hors du package `api` :
 # c'est une interface, pas une brique du service.
 UI_DIR = Path(__file__).parent.parent / "ui"
+
+# En deca, l'ecart mesure par le test de Kolmogorov-Smirnov n'est pas
+# explicable par le hasard de l'echantillonnage.
+SEUIL_SIGNIFICATIVITE = 0.05
 
 # Decimales de la probabilite renvoyee. La decision, elle, se prend sur la
 # valeur complete : arrondir d'abord ferait basculer un client a 0.3951 du bon
@@ -146,6 +157,66 @@ def ready() -> ReadyResponse:
     return ReadyResponse(
         ready=True,
         models={famille: sorted(modeles) for famille, modeles in MODELES.items()},
+    )
+
+
+# Reference de `/drift` : l'extrait d'entrainement du dernier modele depose.
+# Celui du modele de churn ne porte que ses 24 features : la derive n'est donc
+# mesuree que sur les colonnes qu'il consomme reellement.
+DERIVE_MODELE = "classification/final"
+DERIVE_REFERENCE = "_train.csv"
+
+
+def _extrait_reference() -> Path:
+    """Extrait `train` du dernier entrainement depose sur disque."""
+    jours = sorted((ARTIFACTS_DIR / DERIVE_MODELE).glob("*/"))
+    extrait = next(
+        (
+            fichier
+            for jour in reversed(jours)
+            for fichier in sorted(jour.glob(f"*{DERIVE_REFERENCE}"))
+        ),
+        None,
+    )
+    if extrait is None:
+        raise HTTPException(
+            status.HTTP_404_NOT_FOUND,
+            detail=f"aucun extrait d'entrainement dans artifacts/{DERIVE_MODELE}",
+        )
+
+    return extrait
+
+
+@app.post("/drift", response_model=DriftResponse)
+def drift(requete: DriftRequest) -> DriftResponse:
+    """Derive entre la population d'entrainement et celle transmise.
+
+    La reference est l'extrait d'entrainement du dernier modele enregistre ;
+    la population courante est celle que l'appelant observe -- en production,
+    les clients recemment scores.
+    """
+    if not requete.data:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_CONTENT, detail="aucune ligne transmise"
+        )
+
+    reference = _extrait_reference()
+    courant = pd.DataFrame(requete.data)
+
+    return DriftResponse(
+        reference=reference.name,
+        current=f"{len(courant)} lignes transmises",
+        columns=[
+            ColonneDeriveResponse(
+                column=mesure.colonne,
+                ks=round(mesure.ks, DECIMALES),
+                p_value=round(mesure.p_value, DECIMALES),
+                psi=round(mesure.psi, DECIMALES),
+                verdict=mesure.verdict,
+                significant=mesure.p_value < SEUIL_SIGNIFICATIVITE,
+            )
+            for mesure in rapport_derive(pd.read_csv(reference), courant)
+        ],
     )
 
 

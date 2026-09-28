@@ -21,6 +21,7 @@ artifacts/                  Modèles entraînés, versionnés dans git
 src/
 ├── ml_churn/               Package installé (`uv run python -m ml_churn...`)
 │   ├── api/                Service FastAPI : /health, /ready, /predict
+│   ├── drift/              Dérive des données : KS et PSI
 │   │   └── data/           Schémas Pydantic des requêtes et réponses
 │   ├── ui/                 Page de test : index.html, style.css, app.js, clients.js
 │   ├── ingestion/          Médaillon : CSV → bronze → silver → gold
@@ -195,9 +196,15 @@ uv run uvicorn ml_churn.api.main:app --reload
 Page de test sur <http://127.0.0.1:8000/> et documentation interactive sur
 <http://127.0.0.1:8000/docs>.
 
-La page (`ui/`) affiche vingt clients tirés au hasard du jeu de test et
-légèrement modifiés, stockés dans `clients.js` avec les 64 colonnes gold dont
-les deux modèles ont besoin. Dès que les sondes passent au vert, elle appelle
+La page (`ui/`) affiche cent clients stockés dans `clients.js`, par pages de
+vingt, avec les 64 colonnes gold dont les deux modèles ont besoin. Le tri par
+en-tête et les prédictions portent sur l'ensemble, pas sur la page courante. Ils sont produits par
+`uv run python -m ml_churn.ui.generer_clients` : des lignes réelles du jeu de
+test, perturbées de ±12 % **sur leurs seules colonnes sources**, les colonnes
+dérivées étant ensuite recalculées avec les formules de l'ingestion. Bruiter
+chaque colonne séparément romprait les relations qui les lient — le taux
+d'adoption cesserait d'être le rapport des utilisateurs actifs aux sièges, le
+revenu de correspondre au plan. Dès que les sondes passent au vert, elle appelle
 `/predict-churn` et `/predict-clv` une fois par client et remplit les deux
 dernières colonnes du tableau, distinguées par leur couleur. Elle est servie
 par l'API elle-même : même origine, donc aucune configuration CORS.
@@ -207,6 +214,7 @@ par l'API elle-même : même origine, donc aucune configuration CORS.
 | `GET /health` | Le service répond | `{"status": "ok"}` |
 | `GET /ready` | Les deux familles de modèles sont entraînées | `{"ready": true, "models": {"churn": ["xgboost"], "clv": ["xgboost"]}}`, ou 503 |
 | `GET /ui-config` | Clé d'API remise à la page de test | `{"api_key": "…"}` |
+| `POST /drift` | Dérive entre l'entraînement et les lignes transmises | `{"reference", "current", "columns": [{"column", "ks", "p_value", "psi", "verdict"}]}` |
 | `POST /predict-churn` | Probabilité de churn d'un client | `{"model", "probability", "threshold", "churn"}` |
 | `POST /predict-clv` | Valeur vie client estimée | `{"model", "lifetime_value_eur"}` |
 
@@ -244,7 +252,7 @@ le moins cher au plus cher :
 
 | Middleware | Règle | Refus |
 | --- | --- | --- |
-| `BodySizeLimitMiddleware` | corps de 64 ko au maximum | **413** |
+| `BodySizeLimitMiddleware` | corps de 64 ko au maximum, 1 Mo sur `/drift` | **413** |
 | `RateLimitMiddleware` | 400 appels/minute sur `/predict-*`, 60 sur le reste, par IP | **429**, avec `retry-after` |
 | `ApiKeyMiddleware` | en-tête `X-API-Key` sur les `POST` | **401** |
 
@@ -281,6 +289,39 @@ Les modèles exposés sont déclarés dans `MODELES`, à la fin de
 modèle, associant le nom public à la fonction qui l'entraîne. Les
 configurations servies — seuil et hyperparamètres retenus par les recherches —
 sont figées en tête du même fichier.
+
+## 4. Dérive des données
+
+`drift/drifting.py` compare deux populations, colonne par colonne, à partir de
+deux DataFrames ou de deux CSV :
+
+```python
+from ml_churn.drift import rapport_derive_csv
+
+for mesure in rapport_derive_csv("train.csv", "test.csv"):
+    print(mesure.colonne, mesure.ks, mesure.psi, mesure.verdict)
+```
+
+| Mesure | Ce qu'elle dit |
+| --- | --- |
+| **KS** (Kolmogorov-Smirnov) | Écart maximal entre les deux fonctions de répartition, avec sa p-value. Un test : l'écart est-il explicable par le hasard de l'échantillonnage ? |
+| **PSI** (Population Stability Index) | Ampleur du déplacement, tranche par tranche. Ne teste rien, mais se lit avec des seuils conventionnels : < 0.10 stable, < 0.25 dérive modérée, au-delà importante. |
+
+Les tranches du PSI viennent de la **référence** — c'est elle qui définit la
+normalité à laquelle le courant est comparé. Les colonnes à peu de modalités
+(binaires one-hot, `csat`) sont découpées par valeur plutôt que par quantile.
+
+`POST /drift` prend la population courante dans son corps et la compare à
+l'extrait `_train.csv` du dernier modèle enregistré. La page de test lui envoie
+ses cent clients et affiche le résultat sous leur tableau ; en production, ce
+seraient les clients récemment scorés. Ce corps dépasse la limite des autres
+routes — cent lignes pèsent 153 ko — d'où la limite propre de 1 Mo.
+
+**Le PSI demande de la matière.** Le nombre de tranches s'adapte au plus petit
+des deux échantillons — cinq observations par tranche au minimum — sinon la
+moitié se vident et le logarithme du rapport s'emballe : le PSI annonce alors
+une dérive massive là où il ne mesure que la petitesse de l'échantillon. Sur
+vingt lignes il reste indicatif ; c'est la p-value du KS qui tranche.
 
 # 6 TODO
 
