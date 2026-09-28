@@ -1,0 +1,78 @@
+{
+  "model": "regression_baseline",
+  "saved_at": "2026-09-28T11:14:35+02:00",
+  "versions": {
+    "python": "3.13",
+    "scikit-learn": "1.9.0",
+    "numpy": "2.5.3",
+    "joblib": "1.6.0"
+  },
+  "target": "valeur_vie_client_eur",
+  "features": [
+    "revenu_mensuel_recurrent_eur",
+    "sieges_souscrits",
+    "utilisateurs_actifs",
+    "taille_entreprise_ge",
+    "plan_ent",
+    "fonctionnalites_utilisees",
+    "delai_reponse_support_h",
+    "taille_entreprise_tpe",
+    "plan_str",
+    "taille_entreprise_pme"
+  ],
+  "sizes": {
+    "n_train": 3003,
+    "n_validation": 1000,
+    "n_test": 997
+  },
+  "test_metrics": {
+    "r2": 0.61,
+    "mae": 45288.3,
+    "rmse": 136694.78,
+    "mape": 199.96
+  },
+  "standardization": {
+    "method": "StandardScaler",
+    "mean": {
+      "revenu_mensuel_recurrent_eur": 3460.504159174159,
+      "sieges_souscrits": 72.53879453879453,
+      "utilisateurs_actifs": 33.98401598401598,
+      "taille_entreprise_ge": 0.06793206793206794,
+      "plan_ent": 0.10789210789210789,
+      "fonctionnalites_utilisees": 6.461871461871461,
+      "delai_reponse_support_h": 12.529020979020979,
+      "taille_entreprise_tpe": 0.334998334998335,
+      "plan_str": 0.26706626706626707,
+      "taille_entreprise_pme": 0.4175824175824176
+    },
+    "scale": {
+      "revenu_mensuel_recurrent_eur": 8626.285277119972,
+      "sieges_souscrits": 138.3458269782761,
+      "utilisateurs_actifs": 76.72969632389918,
+      "taille_entreprise_ge": 0.2516292949529939,
+      "plan_ent": 0.31024409897160915,
+      "fonctionnalites_utilisees": 5.351525259667246,
+      "delai_reponse_support_h": 8.701971431832312,
+      "taille_entreprise_tpe": 0.47198988394527935,
+      "plan_str": 0.44242725510704733,
+      "taille_entreprise_pme": 0.4931605642267446
+    }
+  },
+  "datasets": {
+    "train": {
+      "file": "regression_baseline_train.csv",
+      "rows": 3003,
+      "columns": 12
+    },
+    "validation": {
+      "file": "regression_baseline_validation.csv",
+      "rows": 1000,
+      "columns": 12
+    },
+    "test": {
+      "file": "regression_baseline_test.csv",
+      "rows": 997,
+      "columns": 12
+    }
+  }
+}

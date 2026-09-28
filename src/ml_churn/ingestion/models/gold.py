@@ -113,6 +113,10 @@ class ChurnSaasGold(Base):
     sante_compte_fin_periode: Mapped[int | None] = mapped_column(Integer)
     churn: Mapped[int | None] = mapped_column(Integer)
 
+    # Jeu auquel la ligne appartient : TRAIN, VAL ou TEST. Fige des l'ingestion
+    # pour que tous les modeles apprennent et se mesurent sur les memes clients.
+    jeu: Mapped[str | None] = mapped_column(String(5))
+
     # --- Colonnes derivees ---
     # Latence de connexion rapportee a la duree de vie du compte : 15 jours
     # sans connexion ne pesent pas pareil a 1 mois et a 3 ans d'anciennete.

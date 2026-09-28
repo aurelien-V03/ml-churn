@@ -27,7 +27,7 @@ from ml_churn.training.common.data import (
     RANDOM_STATE,
     feature_columns,
     load_gold,
-    split_train_validation_test,
+    split_par_jeu,
     training_extracts,
 )
 from ml_churn.training.common.logs import log_classification_training
@@ -110,7 +110,7 @@ def train_classification_baseline(
     X = df[features].apply(pd.to_numeric, errors="coerce")
     y = pd.to_numeric(df[TARGET])
 
-    split = split_train_validation_test(X, y)
+    split = split_par_jeu(df, X, y)
 
     model = build_baseline_pipeline()
     model.fit(split.X_train, split.y_train)

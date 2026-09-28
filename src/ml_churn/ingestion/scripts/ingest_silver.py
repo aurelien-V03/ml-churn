@@ -15,6 +15,7 @@ import unicodedata
 from collections.abc import Callable
 from dataclasses import dataclass
 
+import numpy as np
 import pandas as pd
 import typer
 from sqlalchemy import select, text
@@ -461,6 +462,74 @@ def appliquer_regles_metier(df: pd.DataFrame, echo: bool = True) -> pd.DataFrame
     return df
 
 
+# --- Affectation train / validation / test ------------------------------
+
+# Memes proportions que le decoupage precedemment fait a l'entrainement.
+PROPORTIONS: dict[str, float] = {"TRAIN": 0.6, "VAL": 0.2, "TEST": 0.2}
+
+# Graine du tirage : l'affectation doit etre rejouable a l'identique.
+GRAINE_JEU = 42
+
+# Nombre de tranches de valeur vie client servant a stratifier.
+QUANTILES_VALEUR = 10
+
+COLONNE_JEU = "jeu"
+
+
+def _strates(df: pd.DataFrame) -> pd.Series:
+    """Croise le churn et la tranche de valeur vie client.
+
+    Un seul decoupage sert les deux familles de modeles : il doit donc
+    equilibrer la cible de classification -- `churn` -- et celle de regression,
+    continue, dont on prend les deciles. Les valeurs manquantes forment leur
+    propre strate plutot que d'etre ecartees.
+    """
+    churn = df["churn"].astype("string").fillna("NA")
+    valeur = pd.to_numeric(df["valeur_vie_client_eur"], errors="coerce")
+    tranches = pd.qcut(valeur, QUANTILES_VALEUR, labels=False, duplicates="drop")
+
+    return churn.str.cat(tranches.astype("string").fillna("NA"), sep="|")
+
+
+def affecter_jeu(df: pd.DataFrame, echo: bool = True) -> pd.DataFrame:
+    """Repartit les lignes entre TRAIN, VAL et TEST, strate par strate.
+
+    Le decoupage est fige ici plutot qu'a l'entrainement : tous les modeles
+    voient alors exactement les memes clients, et un extrait exporte reste
+    interpretable sans rejouer le partage.
+    """
+    df = df.copy()
+    tirage = np.random.default_rng(GRAINE_JEU)
+    jeux = pd.Series(pd.NA, index=df.index, dtype="string")
+
+    # Melange puis decoupe a l'interieur de chaque strate : les proportions
+    # sont respectees globalement comme dans chaque tranche.
+    for indices in df.groupby(_strates(df), observed=True).groups.values():
+        melanges = tirage.permutation(np.asarray(indices))
+
+        debut = 0
+        for nom, part in PROPORTIONS.items():
+            taille = round(len(melanges) * part)
+            jeux.loc[melanges[debut : debut + taille]] = nom
+            debut += taille
+
+        # Les arrondis laissent parfois une ligne orpheline : elle va au train.
+        jeux.loc[melanges[debut:]] = next(iter(PROPORTIONS))
+
+    df[COLONNE_JEU] = jeux
+
+    if echo:
+        repartition = df[COLONNE_JEU].value_counts()
+        detail = " / ".join(
+            f"{nom} {repartition.get(nom, 0)} ({repartition.get(nom, 0) / len(df):.0%})"
+            for nom in PROPORTIONS
+        )
+        _log_action("affectation jeu", len(df), len(df), "lignes")
+        print(f"      {detail}")
+
+    return df
+
+
 # --- Typage des colonnes ------------------------------------------------
 
 COLONNES_ENTIERES: tuple[str, ...] = (
@@ -610,66 +679,101 @@ def imputer_revenu_par_catalogue(df: pd.DataFrame, echo: bool = True) -> pd.Data
     return df
 
 
+def _imputer_mediane(
+    df: pd.DataFrame, colonne: str, lignes: pd.Index
+) -> tuple[pd.Series, float | None]:
+    """Comble les manquants de `colonne` sur `lignes`, par leur mediane."""
+    valeurs = pd.to_numeric(df.loc[lignes, colonne], errors="coerce")
+    mediane = valeurs.median()
+
+    if pd.isna(mediane):
+        return valeurs, None
+
+    # Une colonne entiere doit le rester : la mediane peut tomber sur x.5.
+    if colonne in COLONNES_ENTIERES:
+        mediane = round(float(mediane))
+        return valeurs.fillna(mediane).round().astype(int), mediane
+
+    mediane = float(mediane)
+    return valeurs.fillna(mediane).astype(float), mediane
+
+
+def _imputer_mode(
+    df: pd.DataFrame, colonne: str, lignes: pd.Index
+) -> tuple[pd.Series, str | None]:
+    """Comble les manquants de `colonne` sur `lignes`, par leur modalite la plus
+    frequente."""
+    valeurs = df.loc[lignes, colonne].astype("string")
+    modes = valeurs.mode()
+
+    if modes.empty:
+        return valeurs, None
+
+    mode = modes.iloc[0]
+    return valeurs.fillna(mode), mode
+
+
 def imputer_valeurs_manquantes(df: pd.DataFrame, echo: bool = True) -> pd.DataFrame:
     """Comble les valeurs manquantes : mediane pour les numeriques, mode pour
     les categorielles.
 
-    Mediane et mode sont calcules sur l'ensemble des lignes : si un decoupage
-    train/test intervient plus tard, ils devront etre recalcules sur le train
-    seul pour ne pas y faire fuiter le test.
+    Les statistiques sont calculees **jeu par jeu** : la mediane du train ne
+    comble que des lignes du train, celle du test que des lignes du test. Aucune
+    valeur ne traverse donc la frontiere posee par `affecter_jeu`.
     """
     df = df.copy()
+    groupes = {jeu: lignes for jeu, lignes in df.groupby(COLONNE_JEU).groups.items()}
 
     for colonne in IMPUTATIONS_MEDIANE:
-        valeurs = pd.to_numeric(df[colonne], errors="coerce")
-        avant = int(valeurs.notna().sum())
-        mediane = valeurs.median()
+        avant = int(pd.to_numeric(df[colonne], errors="coerce").notna().sum())
+        medianes: dict[str, float] = {}
 
-        if pd.isna(mediane):
-            if echo:
-                print(f"WARNING : {colonne} : aucune valeur, imputation impossible")
-            continue
-
-        # Une colonne entiere doit le rester : la mediane peut tomber sur x.5.
-        if colonne in COLONNES_ENTIERES:
-            mediane = round(float(mediane))
-            remplies = valeurs.fillna(mediane).round().astype(int)
-        else:
-            mediane = float(mediane)
-            remplies = valeurs.fillna(mediane).astype(float)
-
-        df[colonne] = remplies.astype(object)
+        for jeu, lignes in groupes.items():
+            remplies, mediane = _imputer_mediane(df, colonne, lignes)
+            if mediane is None:
+                if echo:
+                    print(
+                        f"WARNING : {colonne} / {jeu} : aucune valeur, imputation impossible"
+                    )
+                continue
+            df.loc[lignes, colonne] = remplies.astype(object)
+            medianes[jeu] = mediane
 
         if echo:
+            detail = ", ".join(
+                f"{jeu} = {valeur:g}" for jeu, valeur in medianes.items()
+            )
             _log_action(
                 f"imputation {colonne}",
                 avant,
-                int(remplies.notna().sum()),
+                int(pd.to_numeric(df[colonne], errors="coerce").notna().sum()),
                 "valeurs",
-                detail=f" (mediane = {mediane:g})",
+                detail=f" (mediane {detail})",
             )
 
     for colonne in IMPUTATIONS_MODE:
-        valeurs = df[colonne].astype("string")
-        avant = int(valeurs.notna().sum())
-        modes = valeurs.mode()
+        avant = int(df[colonne].astype("string").notna().sum())
+        modes: dict[str, str] = {}
 
-        if modes.empty:
-            if echo:
-                print(f"WARNING : {colonne} : aucune valeur, imputation impossible")
-            continue
-
-        mode = modes.iloc[0]
-        remplies = valeurs.fillna(mode)
-        df[colonne] = remplies.astype(object)
+        for jeu, lignes in groupes.items():
+            remplies, mode = _imputer_mode(df, colonne, lignes)
+            if mode is None:
+                if echo:
+                    print(
+                        f"WARNING : {colonne} / {jeu} : aucune valeur, imputation impossible"
+                    )
+                continue
+            df.loc[lignes, colonne] = remplies.astype(object)
+            modes[jeu] = mode
 
         if echo:
+            detail = ", ".join(f"{jeu} = {valeur}" for jeu, valeur in modes.items())
             _log_action(
                 f"imputation {colonne}",
                 avant,
-                int(remplies.notna().sum()),
+                int(df[colonne].astype("string").notna().sum()),
                 "valeurs",
-                detail=f" (mode = {mode})",
+                detail=f" (mode {detail})",
             )
 
     return df
@@ -754,6 +858,9 @@ TRANSFORMATIONS: tuple[Transformation, ...] = (
     standardiser_groupe_experimentation,
     deriver_polarite_csm,
     appliquer_regles_metier,
+    # Avant le typage : la colonne `jeu` fait partie du modele, elle doit
+    # exister quand les types sont appliques.
+    affecter_jeu,
     typer_colonnes,
     imputer_revenu_par_catalogue,
     imputer_valeurs_manquantes,

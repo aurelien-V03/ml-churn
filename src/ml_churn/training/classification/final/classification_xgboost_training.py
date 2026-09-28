@@ -31,7 +31,7 @@ from ml_churn.training.common.data import (
     Split,
     feature_columns,
     load_gold,
-    split_train_validation_test,
+    split_par_jeu,
     training_extracts,
 )
 from ml_churn.training.common.logs import log_classification_training
@@ -167,7 +167,7 @@ def prepare_split(
     X = df[features].apply(pd.to_numeric, errors="coerce")
     y = pd.to_numeric(df[TARGET])
 
-    return df, features, split_train_validation_test(X, y)
+    return df, features, split_par_jeu(df, X, y)
 
 
 def train_classification_xgboost(

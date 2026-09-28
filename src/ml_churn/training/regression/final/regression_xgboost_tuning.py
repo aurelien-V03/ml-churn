@@ -25,8 +25,7 @@ import typer
 from ml_churn.training.common.data import (
     feature_columns,
     load_gold,
-    split_train_validation_test,
-    strates_quantiles,
+    split_par_jeu,
 )
 from ml_churn.training.common.logs import log_carbon_footprint
 from ml_churn.training.common.metrics import DIRECTIONS_REGRESSION, regression_metrics
@@ -124,10 +123,7 @@ def _rechercher(*, objectif: str, n_essais: int, echo: bool) -> Tuning:
     features = feature_columns(TARGET, EXCLUSIONS)
     X = df[features].apply(pd.to_numeric, errors="coerce")
     y = pd.to_numeric(df[TARGET])
-    # Stratifier sur les deciles de la cible : chaque jeu recoit sa part de
-    # petits et de gros comptes, ce qu'une cible continue ne permet pas
-    # directement.
-    split = split_train_validation_test(X, y, stratify=strates_quantiles(y))
+    split = split_par_jeu(df, X, y)
 
     direction = DIRECTIONS_REGRESSION[objectif]
     if echo:

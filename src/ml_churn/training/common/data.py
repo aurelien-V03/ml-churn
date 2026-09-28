@@ -5,7 +5,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 import pandas as pd
-from sklearn.model_selection import train_test_split
 
 from ml_churn.ingestion.db import get_engine
 from ml_churn.ingestion.models import ChurnSaasGold, ChurnSaasSilver
@@ -27,6 +26,8 @@ EXCLUSIONS_COMMUNES: dict[str, str] = {
     "niveau_anciennete": "encodee en one-hot",
     # Fuite de donnees : connue seulement apres la periode observee.
     "sante_compte_fin_periode": "fuite de donnees",
+    # Colonne de decoupage, pas une caracteristique du client.
+    "jeu": "appartenance train / validation / test",
 }
 
 
@@ -53,28 +54,14 @@ def feature_columns(target: str, exclusions: dict[str, str]) -> list[str]:
     ]
 
 
-# Trois jeux disjoints : 60 % train, 20 % validation, 20 % test.
-TEST_SIZE = 0.2
-VALIDATION_SIZE = 0.2
+# Colonne portant l'appartenance de chaque ligne, posee en couche silver.
+COLONNE_JEU = "jeu"
+
+# Valeurs de cette colonne, dans l'ordre des attributs de `Split`.
+JEUX: dict[str, str] = {"train": "TRAIN", "validation": "VAL", "test": "TEST"}
+
+# Graine des modeles. Le decoupage, lui, ne depend plus d'elle.
 RANDOM_STATE = 42
-
-
-# Nombre de classes d'effectifs egaux pour stratifier une cible continue.
-QUANTILES_STRATIFICATION = 10
-
-
-def strates_quantiles(
-    y: pd.Series, quantiles: int = QUANTILES_STRATIFICATION
-) -> pd.Series:
-    """Decoupe une cible continue en classes d'effectifs egaux.
-
-    `train_test_split` ne sait stratifier que sur des classes : une valeur vie
-    client est quasi unique par client, elle ne peut pas servir telle quelle.
-    Les deciles, eux, garantissent que chaque jeu recoit sa part de petits et
-    de gros comptes -- ce qui compte sur une cible dont la variance est portee
-    par quelques clients extremes.
-    """
-    return pd.qcut(y, quantiles, labels=False, duplicates="drop")
 
 
 @dataclass(frozen=True)
@@ -102,49 +89,28 @@ class Split:
         }
 
 
-def split_train_validation_test(
-    X: pd.DataFrame, y: pd.Series, *, stratify: pd.Series | None = None
-) -> Split:
-    """Decoupe en trois jeux stratifies, en deux temps.
+def split_par_jeu(df: pd.DataFrame, X: pd.DataFrame, y: pd.Series) -> Split:
+    """Decoupe selon la colonne `jeu`, posee lors de l'ingestion silver.
 
-    Le meme decoupage pour tous les modeles : leurs metriques restent
-    comparables, et aucun n'a vu le test avant la mesure finale.
-
-    `stratify` designe la colonne qui equilibre les trois jeux ; a defaut, la
-    cible elle-meme. Une cible continue ne peut pas servir telle quelle, chaque
-    valeur y etant quasi unique : les modeles de regression passent ses
-    deciles, via `strates_quantiles`.
+    Le partage ne se rejoue plus a l'entrainement : il est fige dans la donnee,
+    stratifie sur le churn croise aux deciles de valeur vie client. Tous les
+    modeles voient donc exactement les memes clients, quelle que soit leur
+    cible, et un extrait exporte reste interpretable sans rejouer le tirage.
     """
-    repartition = y if stratify is None else stratify
+    manquantes = set(JEUX.values()) - set(df[COLONNE_JEU].dropna().unique())
+    if manquantes:
+        raise ValueError(
+            f"jeux absents de la couche gold : {sorted(manquantes)} "
+            "-- relancer l'ingestion silver puis gold"
+        )
 
-    X_reste, X_test, repartition_reste, _ = train_test_split(
-        X,
-        repartition,
-        test_size=TEST_SIZE,
-        random_state=RANDOM_STATE,
-        stratify=repartition,
-    )
-    # La part de validation est exprimee sur le total, d'ou le reajustement.
-    part_validation = VALIDATION_SIZE / (1 - TEST_SIZE)
-    X_train, X_validation = train_test_split(
-        X_reste,
-        test_size=part_validation,
-        random_state=RANDOM_STATE,
-        stratify=repartition_reste,
-    )
-    y_train, y_validation, y_test = (
-        y.loc[X_train.index],
-        y.loc[X_validation.index],
-        y.loc[X_test.index],
-    )
+    lignes = {
+        role: df.index[df[COLONNE_JEU] == valeur] for role, valeur in JEUX.items()
+    }
 
     return Split(
-        X_train=X_train,
-        X_validation=X_validation,
-        X_test=X_test,
-        y_train=y_train,
-        y_validation=y_validation,
-        y_test=y_test,
+        **{f"X_{role}": X.loc[index] for role, index in lignes.items()},
+        **{f"y_{role}": y.loc[index] for role, index in lignes.items()},
     )
 
 

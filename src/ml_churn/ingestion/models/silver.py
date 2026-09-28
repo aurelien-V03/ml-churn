@@ -84,6 +84,10 @@ class ChurnSaasSilver(Base):
     sante_compte_fin_periode: Mapped[int | None] = mapped_column(Integer)
     churn: Mapped[int | None] = mapped_column(Integer)
 
+    # Jeu auquel la ligne appartient : TRAIN, VAL ou TEST. Fige des l'ingestion
+    # pour que tous les modeles apprennent et se mesurent sur les memes clients.
+    jeu: Mapped[str | None] = mapped_column(String(5))
+
     _transformed_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )

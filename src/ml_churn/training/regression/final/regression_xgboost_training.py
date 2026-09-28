@@ -35,8 +35,7 @@ from ml_churn.training.common.data import (
     RANDOM_STATE,
     feature_columns,
     load_gold,
-    split_train_validation_test,
-    strates_quantiles,
+    split_par_jeu,
     training_extracts,
 )
 from ml_churn.training.common.logs import log_regression_training
@@ -118,10 +117,7 @@ def train_regression_xgboost(
     X = df[features].apply(pd.to_numeric, errors="coerce")
     y = pd.to_numeric(df[TARGET])
 
-    # Stratifier sur les deciles de la cible : chaque jeu recoit sa part de
-    # petits et de gros comptes, ce qu'une cible continue ne permet pas
-    # directement.
-    split = split_train_validation_test(X, y, stratify=strates_quantiles(y))
+    split = split_par_jeu(df, X, y)
 
     retenus = {**HYPERPARAMETRES, **(hyperparametres or {})}
     model = build_xgboost_regression_pipeline(retenus)
