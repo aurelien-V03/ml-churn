@@ -1,0 +1,30 @@
+name: CI
+
+# Chaque poussee sur main, plus un declenchement manuel pour rejouer sans commit.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Installer uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      # `--locked` echoue si uv.lock ne correspond plus a pyproject.toml :
+      # l'environnement de la CI est alors exactement celui du poste.
+      - name: Installer les dépendances
+        run: uv sync --locked
+
+      - name: Ruff — règles
+        run: uv run ruff check src
+
+      - name: Ruff — format
+        run: uv run ruff format --check src

@@ -323,6 +323,20 @@ moitié se vident et le logarithme du rapport s'emballe : le PSI annonce alors
 une dérive massive là où il ne mesure que la petitesse de l'échantillon. Sur
 vingt lignes il reste indicatif ; c'est la p-value du KS qui tranche.
 
+## 5. Intégration continue
+
+`.github/workflows/ci.yml` se déclenche à chaque poussée sur `main`, et
+manuellement via *Run workflow*. Un seul job, sans base de données :
+
+| Étape | Commande |
+| --- | --- |
+| Dépendances | `uv sync --locked` |
+| Règles | `uv run ruff check src` |
+| Format | `uv run ruff format --check src` |
+
+`uv sync --locked` échoue si `uv.lock` ne correspond plus à `pyproject.toml` :
+l'environnement de la CI est alors exactement celui du poste.
+
 # 6 TODO
 
 - bien penser a versionner les modeles avec leurs donnes
