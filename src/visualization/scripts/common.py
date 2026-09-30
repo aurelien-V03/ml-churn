@@ -28,6 +28,9 @@ SOURCE = ChurnSaasCompletBronze.__table__.fullname
 # Colonnes ajoutees par l'ingestion : sans interet pour l'exploration.
 COLONNES_TECHNIQUES = ("id", "_source_file", "_source_line", "_ingested_at")
 
+# Les trois formats de date presents dans le CSV source.
+FORMATS_DATE: tuple[str, ...] = ("%Y-%m-%d", "%d/%m/%Y", "%d %b %Y")
+
 
 def load_dataset() -> pd.DataFrame:
     """Couche bronze : le CSV stocke tel quel, tout en texte.
@@ -47,6 +50,43 @@ def numeric_column(df: pd.DataFrame, column: str) -> pd.Series:
     return pd.to_numeric(
         cleaned.str.replace(",", ".", regex=False), errors="coerce"
     ).dropna()
+
+
+def dates_souscription(df: pd.DataFrame) -> pd.Series:
+    """Date de souscription, les trois formats du CSV confondus.
+
+    La couche bronze stocke le CSV tel quel : la meme colonne y melange
+    "2023-07-12", "04/03/2024" et "16 Apr 2023".
+    """
+    brut = df["date_souscription"].astype("string").str.strip()
+    dates = pd.Series(pd.NaT, index=df.index, dtype="datetime64[ns]")
+
+    for format_source in FORMATS_DATE:
+        restantes = brut.where(dates.isna() & brut.notna())
+        dates = dates.fillna(
+            pd.to_datetime(restantes, format=format_source, errors="coerce")
+        )
+
+    return dates
+
+
+def _categorielle(valeurs: pd.Series) -> pd.Categorical:
+    """Modalites ordonnees par leur libelle, qui est ici chronologique."""
+    return pd.Categorical(
+        valeurs, categories=sorted(valeurs.dropna().unique()), ordered=True
+    )
+
+
+def annee_souscription(df: pd.DataFrame) -> pd.Categorical:
+    """Annee de souscription, pour les lectures par cohorte annuelle."""
+    return _categorielle(
+        dates_souscription(df).dt.year.astype("Int64").astype("string")
+    )
+
+
+def mois_souscription(df: pd.DataFrame) -> pd.Categorical:
+    """Mois de souscription au format AAAA-MM, dans l'ordre chronologique."""
+    return _categorielle(dates_souscription(df).dt.strftime("%Y-%m").astype("string"))
 
 
 def export_figure(

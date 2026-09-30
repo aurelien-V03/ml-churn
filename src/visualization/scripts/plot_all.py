@@ -13,6 +13,7 @@ from collections.abc import Callable
 from pathlib import Path
 
 from visualization.scripts.common import GRAPHS_DIR
+from visualization.scripts.plot_averages import plot_averages
 from visualization.scripts.plot_boxplots import plot_boxplots
 from visualization.scripts.plot_churn_rates import plot_churn_rates
 from visualization.scripts.plot_grouped_boxplots import plot_grouped_boxplots
@@ -27,6 +28,7 @@ GENERATIONS: tuple[tuple[str, Generation], ...] = (
     ("BOITES A MOUSTACHES GROUPEES", plot_grouped_boxplots),
     ("TAUX DE CHURN PAR TRANCHE", plot_churn_rates),
     ("TAUX DE CHURN PAR VALEUR", plot_scatters),
+    ("MOYENNES PAR TRANCHE", plot_averages),
 )
 
 
