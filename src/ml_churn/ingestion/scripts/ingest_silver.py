@@ -14,6 +14,7 @@ import re
 import unicodedata
 from collections.abc import Callable
 from dataclasses import dataclass
+from functools import partial
 
 import numpy as np
 import pandas as pd
@@ -22,7 +23,16 @@ from sqlalchemy import select, text
 from sqlalchemy.orm import Session
 
 from ml_churn.ingestion.db import ensure_schema, get_engine, get_session
-from ml_churn.ingestion.logs import log_total
+from ml_churn.ingestion.logs import (
+    ICONE_ALERTE,
+    ICONE_SUCCES,
+    PREFIXE_ECRITURE_BASE,
+    PREFIXE_LECTURE_BASE,
+    log_action,
+    log_total,
+    pourcentage,
+    reinitialiser_groupes,
+)
 from ml_churn.ingestion.models import (
     SILVER_SCHEMA,
     Base,
@@ -55,7 +65,16 @@ def dedupliquer_clients(df: pd.DataFrame, echo: bool = True) -> pd.DataFrame:
     apres = len(dedupliques)
 
     if echo:
-        _log_action("deduplication client_id", avant, apres, "lignes")
+        retirees = avant - apres
+        log_action(
+            "deduplication client_id",
+            apres,
+            avant,
+            "lignes",
+            resultat="conservees",
+            description="une ligne par client",
+            detail=f" ({retirees} doublons retires)" if retirees else "",
+        )
 
     return dedupliques
 
@@ -120,37 +139,14 @@ def _nb_valeurs(valeurs: pd.Series) -> int:
     return int((brutes.notna() & (brutes.str.strip() != "")).sum())
 
 
-# Famille de la derniere action loguee, pour aerer entre deux familles.
-_groupe_precedent: str | None = None
-
-
-def _separer_groupe(groupe: str) -> None:
-    """Ligne vide au passage d'une famille d'actions a une autre."""
-    global _groupe_precedent
-    if _groupe_precedent is not None and groupe != _groupe_precedent:
-        print()
-    _groupe_precedent = groupe
-
-
-def _reinitialiser_groupes() -> None:
-    """Repart d'un etat neutre : deux executions successives restent lisibles."""
-    global _groupe_precedent
-    _groupe_precedent = None
-
-
-def _log_action(
-    action: str,
-    avant: int,
-    apres: int,
-    unite: str,
-    *,
-    difference: bool = False,
-    detail: str = "",
-) -> None:
-    """Format commun a toutes les actions : [ACTION] : avant -> apres."""
-    _separer_groupe(action.split()[0])
-    ecart = f" ({apres - avant})" if difference else ""
-    print(f"[{action.upper()}] : {avant} {unite} -> {apres} {unite}{ecart}{detail}")
+def _apercu(correspondances: dict[str, str], combien: int = 2) -> str:
+    """Deux exemples de correspondance, pour illustrer sans tout enumerer."""
+    exemples = [
+        f"{source} -> {cible}"
+        for source, cible in list(correspondances.items())[:combien]
+    ]
+    suite = ", ..." if len(correspondances) > combien else ""
+    return ", ".join(exemples) + suite
 
 
 def _valeurs_normalisees(df: pd.DataFrame, colonne: str) -> pd.Series:
@@ -176,11 +172,13 @@ def _standardiser_categorie(
     df[colonne] = converties
 
     if echo:
-        _log_action(
+        log_action(
             f"standardisation {colonne}",
-            avant,
             _nb_valeurs(converties),
+            avant,
             "valeurs",
+            resultat="standardisees",
+            description=_apercu(correspondances),
         )
         if inconnues:
             print(
@@ -208,11 +206,13 @@ def standardiser_date_souscription(df: pd.DataFrame, echo: bool = True) -> pd.Da
     df[colonne] = dates.dt.strftime("%Y-%m-%d").astype("string")
 
     if echo:
-        _log_action(
+        log_action(
             f"standardisation {colonne}",
-            avant,
             _nb_valeurs(df[colonne]),
+            avant,
             "valeurs",
+            resultat="standardisees",
+            description=f"{len(FORMATS_DATE)} formats de date -> AAAA-MM-JJ",
         )
         if non_converties:
             print(
@@ -332,11 +332,13 @@ def deriver_polarite_csm(df: pd.DataFrame, echo: bool = True) -> pd.DataFrame:
     if echo:
         repartition = df["polarite_csm"].value_counts()
         detail = ", ".join(f"{nom} {nombre}" for nom, nombre in repartition.items())
-        _log_action(
+        log_action(
             "derivation polarite_csm",
-            int(commentaires.notna().sum()),
             int(df["polarite_csm"].notna().sum()),
+            len(df),
             "valeurs",
+            resultat="deduites",
+            description="depuis le commentaire CSM",
             detail=f" ({detail})",
         )
 
@@ -455,8 +457,15 @@ def appliquer_regles_metier(df: pd.DataFrame, echo: bool = True) -> pd.DataFrame
         apres = len(df)
 
         if echo:
-            _log_action(
-                f"regle {regle.colonne}", avant, apres, "lignes", difference=True
+            retirees = avant - apres
+            log_action(
+                f"regle {regle.colonne}",
+                apres,
+                avant,
+                "lignes",
+                resultat="conservees",
+                description=regle.description,
+                detail=f" ({retirees} lignes hors regle retirees)" if retirees else "",
             )
 
     return df
@@ -524,7 +533,14 @@ def affecter_jeu(df: pd.DataFrame, echo: bool = True) -> pd.DataFrame:
             f"{nom} {repartition.get(nom, 0)} ({repartition.get(nom, 0) / len(df):.0%})"
             for nom in PROPORTIONS
         )
-        _log_action("affectation jeu", len(df), len(df), "lignes")
+        log_action(
+            "affectation jeu",
+            int(df[COLONNE_JEU].notna().sum()),
+            len(df),
+            "lignes",
+            resultat="affectees",
+            description="60/20/20, stratifie churn x deciles de valeur vie",
+        )
         print(f"      {detail}")
 
     return df
@@ -612,7 +628,14 @@ def typer_colonnes(df: pd.DataFrame, echo: bool = True) -> pd.DataFrame:
         df[colonne] = valeurs.astype(object)
 
     if echo:
-        _log_action("typage colonnes", avant, apres, "valeurs")
+        log_action(
+            "typage colonnes",
+            apres,
+            avant,
+            "valeurs",
+            resultat="typees",
+            description="texte -> date, entier, decimal",
+        )
 
     return df
 
@@ -634,23 +657,22 @@ IMPUTATIONS_MEDIANE: tuple[str, ...] = (
 IMPUTATIONS_MODE: tuple[str, ...] = ("secteur", "pays")
 
 
-def imputer_revenu_par_catalogue(df: pd.DataFrame, echo: bool = True) -> pd.DataFrame:
+def imputer_revenu_par_catalogue(
+    df: pd.DataFrame, echo: bool = True, *, catalogue: pd.DataFrame
+) -> pd.DataFrame:
     """Reconstitue le revenu manquant : sieges souscrits x prix du plan.
 
-    Le prix vient de `catalogue_silver`, deja chargee a ce stade. Sur les lignes
+    Le prix vient du catalogue deja transforme, garde en memoire : l'action n'a
+    pas besoin que `catalogue_silver` soit ecrite pour tourner. Sur les lignes
     ou le revenu est connu, ce calcul le retrouve a environ 9 % pres (remises
     commerciales), contre 91 % pour une imputation par la mediane.
     """
     colonne = "revenu_mensuel_recurrent_eur"
     df = df.copy()
 
-    prix_par_plan = pd.read_sql(
-        select(CATALOGUE_CIBLE.plan, CATALOGUE_CIBLE.prix_mensuel_par_siege_eur),
-        get_engine(),
-    ).set_index("plan")["prix_mensuel_par_siege_eur"]
+    prix_par_plan = catalogue.set_index("plan")["prix_mensuel_par_siege_eur"]
 
     revenus = pd.to_numeric(df[colonne], errors="coerce")
-    avant = int(revenus.notna().sum())
 
     calcules = pd.to_numeric(df["sieges_souscrits"], errors="coerce") * df["plan"].map(
         prix_par_plan.astype(float)
@@ -662,12 +684,13 @@ def imputer_revenu_par_catalogue(df: pd.DataFrame, echo: bool = True) -> pd.Data
     ).astype(object)
 
     if echo:
-        _log_action(
+        log_action(
             f"imputation {colonne}",
-            avant,
             int(completes.notna().sum()),
+            len(df),
             "valeurs",
-            detail=" (sieges x prix du plan)",
+            resultat="renseignees",
+            description="sieges x prix du plan",
         )
         restantes = int(completes.isna().sum())
         if restantes:
@@ -725,7 +748,6 @@ def imputer_valeurs_manquantes(df: pd.DataFrame, echo: bool = True) -> pd.DataFr
     groupes = {jeu: lignes for jeu, lignes in df.groupby(COLONNE_JEU).groups.items()}
 
     for colonne in IMPUTATIONS_MEDIANE:
-        avant = int(pd.to_numeric(df[colonne], errors="coerce").notna().sum())
         medianes: dict[str, float] = {}
 
         for jeu, lignes in groupes.items():
@@ -743,16 +765,17 @@ def imputer_valeurs_manquantes(df: pd.DataFrame, echo: bool = True) -> pd.DataFr
             detail = ", ".join(
                 f"{jeu} = {valeur:g}" for jeu, valeur in medianes.items()
             )
-            _log_action(
+            log_action(
                 f"imputation {colonne}",
-                avant,
                 int(pd.to_numeric(df[colonne], errors="coerce").notna().sum()),
+                len(df),
                 "valeurs",
-                detail=f" (mediane {detail})",
+                resultat="renseignees",
+                description="mediane de chaque jeu",
+                detail=f" ({detail})",
             )
 
     for colonne in IMPUTATIONS_MODE:
-        avant = int(df[colonne].astype("string").notna().sum())
         modes: dict[str, str] = {}
 
         for jeu, lignes in groupes.items():
@@ -768,12 +791,14 @@ def imputer_valeurs_manquantes(df: pd.DataFrame, echo: bool = True) -> pd.DataFr
 
         if echo:
             detail = ", ".join(f"{jeu} = {valeur}" for jeu, valeur in modes.items())
-            _log_action(
+            log_action(
                 f"imputation {colonne}",
-                avant,
                 int(df[colonne].astype("string").notna().sum()),
+                len(df),
                 "valeurs",
-                detail=f" (mode {detail})",
+                resultat="renseignees",
+                description="mode de chaque jeu",
+                detail=f" ({detail})",
             )
 
     return df
@@ -825,7 +850,10 @@ def analyser_outliers_iqr(df: pd.DataFrame, echo: bool = True) -> pd.DataFrame:
         )
 
     print()
-    print(f"[OUTLIERS IQR] : {total} valeurs extremes (seuil {FACTEUR_IQR:g} x IQR)")
+    print(
+        f"[OUTLIERS IQR] signale sans supprimer : {total} valeurs extremes "
+        f"(au-dela de {FACTEUR_IQR:g} x IQR)"
+    )
 
     largeur = max(len(colonne) for colonne, *_ in lignes)
     entete = (
@@ -868,6 +896,16 @@ TRANSFORMATIONS: tuple[Transformation, ...] = (
 )
 
 
+def _transformations(catalogue: pd.DataFrame) -> tuple[Transformation, ...]:
+    """TRANSFORMATIONS, avec le catalogue injecte dans l'action qui en depend."""
+    return tuple(
+        partial(transformation, catalogue=catalogue)
+        if transformation is imputer_revenu_par_catalogue
+        else transformation
+        for transformation in TRANSFORMATIONS
+    )
+
+
 # --------------------------------------------------------------------------
 # Orchestration
 # --------------------------------------------------------------------------
@@ -888,9 +926,12 @@ def _log_donnees_manquantes(df: pd.DataFrame) -> None:
     cellules = len(df) * len(colonnes)
     total = int(manquantes.sum())
 
+    icone = ICONE_SUCCES if total == 0 else ICONE_ALERTE
+
     print()
     print(
-        f"[DONNEES MANQUANTES] : {total / cellules:.2%} des valeurs "
+        f"[VERIFICATION DONNEES MANQUANTES] : {icone} "
+        f"{pourcentage(total / cellules * 100)} des valeurs manquantes "
         f"({total} / {cellules})"
     )
 
@@ -917,12 +958,8 @@ CATALOGUE_DECIMAUX: tuple[str, ...] = ("prix_mensuel_par_siege_eur",)
 BOOLEENS = {"oui": True, "non": False}
 
 
-def ingerer_catalogue(session: Session, *, echo: bool = True) -> int:
-    """bronze.catalogue_bronze -> silver.catalogue_silver.
-
-    Le plan recoit le meme code que dans `churn_saas_silver`, condition pour
-    pouvoir joindre les deux tables.
-    """
+def lire_catalogue(session: Session, *, echo: bool = True) -> pd.DataFrame:
+    """Charge le catalogue des plans depuis bronze."""
     colonnes = [
         colonne
         for colonne in CATALOGUE_SOURCE.__table__.columns
@@ -933,8 +970,20 @@ def ingerer_catalogue(session: Session, *, echo: bool = True) -> int:
     )
 
     if echo:
-        print(f"{CATALOGUE_SOURCE.__table__.fullname} : {len(df)} lignes lues\n")
+        print(
+            f"{PREFIXE_LECTURE_BASE} {CATALOGUE_SOURCE.__table__.fullname} : "
+            f"{len(df)} lignes"
+        )
 
+    return df
+
+
+def transformer_catalogue(df: pd.DataFrame, *, echo: bool = True) -> pd.DataFrame:
+    """Met le catalogue au format silver.
+
+    Le plan recoit le meme code que dans `churn_saas_silver`, condition pour
+    pouvoir joindre les deux tables.
+    """
     df = _standardiser_categorie(df, "plan", PLANS, echo)
 
     for colonne in CATALOGUE_ENTIERS:
@@ -955,15 +1004,22 @@ def ingerer_catalogue(session: Session, *, echo: bool = True) -> int:
     df["support_dedie"] = supports.map(BOOLEENS).astype(object)
 
     if echo:
-        _log_action(
+        log_action(
             "typage catalogue",
-            int(supports.notna().sum()),
             int(df["support_dedie"].notna().sum()),
+            len(df),
             "valeurs",
+            resultat="typees",
+            description="oui/non -> booleen",
         )
         if inconnus:
             print(f"WARNING : support_dedie : valeurs non reconnues -> {inconnus}")
 
+    return df
+
+
+def ecrire_catalogue(session: Session, df: pd.DataFrame, *, echo: bool = True) -> int:
+    """Remplace `catalogue_silver` et retourne le nombre de lignes inserees."""
     CATALOGUE_CIBLE.__table__.drop(get_engine(), checkfirst=True)
     Base.metadata.create_all(get_engine())
 
@@ -978,7 +1034,10 @@ def ingerer_catalogue(session: Session, *, echo: bool = True) -> int:
     )
 
     if echo:
-        print(f"\n{CATALOGUE_CIBLE.__table__.fullname} : {inserted} lignes inserees")
+        print(
+            f"{PREFIXE_ECRITURE_BASE} {CATALOGUE_CIBLE.__table__.fullname} : "
+            f"{inserted} lignes"
+        )
 
     return inserted
 
@@ -996,7 +1055,10 @@ def lire_bronze(session: Session, *, echo: bool = True) -> pd.DataFrame:
     df = pd.read_sql(statement, session.connection()).drop(columns=["_source_line"])
 
     if echo:
-        print(f"{SOURCE_MODEL.__table__.fullname} : {len(df)} lignes lues\n")
+        print(
+            f"{PREFIXE_LECTURE_BASE} {SOURCE_MODEL.__table__.fullname} : "
+            f"{len(df)} lignes\n"
+        )
 
     return df
 
@@ -1019,7 +1081,10 @@ def ecrire_silver(session: Session, df: pd.DataFrame, *, echo: bool = True) -> i
     )
 
     if echo:
-        print(f"\n{TARGET_MODEL.__table__.fullname} : {inserted} lignes inserees")
+        print(
+            f"{PREFIXE_ECRITURE_BASE} {TARGET_MODEL.__table__.fullname} : "
+            f"{inserted} lignes"
+        )
         if inserted != len(rows):
             print(
                 f"WARNING : {len(rows)} lignes a inserer mais {inserted} en base "
@@ -1034,7 +1099,7 @@ def ingest_silver(*, echo: bool = True) -> dict[str, int]:
 
     Retourne le nombre de lignes inserees par table.
     """
-    _reinitialiser_groupes()
+    reinitialiser_groupes()
 
     ensure_schema(SILVER_SCHEMA)
     # La table est entierement rechargee a chaque execution : on la recree pour
@@ -1043,20 +1108,25 @@ def ingest_silver(*, echo: bool = True) -> dict[str, int]:
     Base.metadata.create_all(get_engine())
 
     with get_session() as session:
-        lignes_catalogue = ingerer_catalogue(session, echo=echo)
+        # Les deux lectures bronze d'abord, les deux ecritures silver a la fin :
+        # les transformations tournent entre les deux, sur des DataFrames.
+        catalogue = lire_catalogue(session, echo=echo)
+        df = lire_bronze(session, echo=echo)
+
+        catalogue = transformer_catalogue(catalogue, echo=echo)
 
         if echo:
             print()
-        _reinitialiser_groupes()
+        reinitialiser_groupes()
 
-        df = lire_bronze(session, echo=echo)
-
-        for transformation in TRANSFORMATIONS:
+        for transformation in _transformations(catalogue):
             df = transformation(df, echo)
 
         if echo:
             _log_donnees_manquantes(df)
+            print()
 
+        lignes_catalogue = ecrire_catalogue(session, catalogue, echo=echo)
         inserted = ecrire_silver(session, df, echo=echo)
 
     resultats = {

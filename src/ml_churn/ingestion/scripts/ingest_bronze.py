@@ -19,7 +19,11 @@ from sqlalchemy import func, select, text
 from sqlalchemy.orm import Session
 
 from ml_churn.ingestion.db import PROJECT_ROOT, ensure_schema, get_engine, get_session
-from ml_churn.ingestion.logs import log_total
+from ml_churn.ingestion.logs import (
+    PREFIXE_ECRITURE_BASE,
+    PREFIXE_LECTURE_CSV,
+    log_total,
+)
 from ml_churn.ingestion.models import (
     BRONZE_SCHEMA,
     Base,
@@ -109,7 +113,7 @@ def _load(
     """Charge un CSV dans sa table et compare le lu a l'insere."""
     rows = _read_rows(source)
     if echo:
-        print(f"{source.csv_name} : {len(rows)} lignes lues")
+        print(f"{PREFIXE_LECTURE_CSV} {source.csv_name} : {len(rows)} lignes")
 
     if not append:
         session.execute(
@@ -135,7 +139,10 @@ def _load(
     )
 
     if echo:
-        print(f"{BRONZE_SCHEMA}.{source.table_name} : {inserted} lignes inserees")
+        print(
+            f"{PREFIXE_ECRITURE_BASE} {BRONZE_SCHEMA}.{source.table_name} : "
+            f"{inserted} lignes"
+        )
         if report.difference != 0:
             print(
                 f"WARNING : {source.csv_name} -> {BRONZE_SCHEMA}.{source.table_name} : "
@@ -157,7 +164,8 @@ def _print_summary(reports: list[IngestionReport]) -> None:
         {
             f"{BRONZE_SCHEMA}.{report.table_name}": report.inserted_rows
             for report in reports
-        }
+        },
+        titre="TOTAL insere en base PostgreSQL",
     )
 
     if difference == 0:

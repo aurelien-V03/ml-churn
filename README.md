@@ -343,3 +343,6 @@ l'environnement de la CI est alors exactement celui du poste.
 - ajouter makefile
 - train/test contamination ? spliter avant le prepocessing
 - mettre clé API dans FastAPI
+- Parler du retour sur investissement (fidelisation, notoriete...)
+- infra a mettre en place
+- reentrainement (+ parler de la veille techno)
