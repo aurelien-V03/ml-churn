@@ -20,6 +20,15 @@ from ml_churn.training.common.metrics import (
 # Au-dela, la liste des features encombre le log plus qu'elle ne l'informe.
 MAX_FEATURES_LISTEES = 15
 
+# Au-dela, la moyenne s'eloigne assez de la mediane pour que les grosses
+# valeurs pesent sur les metriques : la MAPE devient alors trompeuse.
+RAPPORT_ASYMETRIE = 2.0
+
+
+def _euros(montant: float) -> str:
+    """Montant en euros, milliers separes par une espace."""
+    return f"{montant:,.0f} €".replace(",", "\u202f")
+
 
 def log_dataset(
     df: pd.DataFrame,
@@ -108,21 +117,67 @@ def log_regression_training(
     dans l'unite de la cible plutot qu'en comptant des cas bien classes. Les
     coefficients ne sont pas affichés non plus : ils restent accessibles dans
     `Result.coefficients`.
+
+    Chaque metrique est suivie de sa lecture rapportee a la cible : une MAE de
+    45 000 € ne dit rien seule, elle dit beaucoup face a une mediane de 11 000 €.
     """
-    print(f"[DONNEES] : {len(df)} clients, {len(features)} features")
+    total = sum(tailles.values())
+
+    print(f"[DONNEES] {len(df)} clients, {len(features)} features")
     # Quelques features se listent, des dizaines n'apportent rien a lire.
     if len(features) <= MAX_FEATURES_LISTEES:
-        print(f"  retenues : {', '.join(features)}")
+        for rang, nom in enumerate(features, start=1):
+            print(f"  {rang:>2}. {nom}")
+
     detail = " / ".join(
-        f"{nom.removeprefix('n_')} {taille}" for nom, taille in tailles.items()
+        f"{nom.removeprefix('n_')} {taille} ({taille / total:.0%})"
+        for nom, taille in tailles.items()
     )
-    print(f"  {detail}")
-    print(
-        f"  cible sur le test : mediane {y_test.median():,.0f} €, "
-        f"moyenne {y_test.mean():,.0f} €, max {y_test.max():,.0f} €"
+    print(f"\n[JEUX] {detail}")
+
+    log_cible(y_test)
+    log_metrics(metrics, FORMULES_REGRESSION)
+    log_lecture_regression(metrics, y_test)
+
+
+def log_cible(y_test: pd.Series) -> None:
+    """Distribution de la cible sur le test : elle conditionne la lecture."""
+    mediane, moyenne = y_test.median(), y_test.mean()
+    rapport = moyenne / mediane if mediane else float("inf")
+    asymetrie = (
+        f"  ({rapport:.1f}x la mediane : distribution tres asymetrique)"
+        if rapport >= RAPPORT_ASYMETRIE
+        else ""
     )
 
-    log_metrics(metrics, FORMULES_REGRESSION)
+    print("\n[CIBLE] sur le jeu de test")
+    print(f"  mediane            {_euros(mediane):>14}")
+    print(f"  moyenne            {_euros(moyenne):>14}{asymetrie}")
+    print(
+        f"  q1 / q3            {_euros(y_test.quantile(0.25))} / "
+        f"{_euros(y_test.quantile(0.75))}"
+    )
+    print(f"  min / max          {_euros(y_test.min())} / {_euros(y_test.max())}")
+
+
+def log_lecture_regression(metrics: dict[str, float], y_test: pd.Series) -> None:
+    """Les metriques rapportees a la cible, pour les rendre interpretables."""
+    mediane = y_test.median()
+    mae, rmse = metrics["mae"], metrics["rmse"]
+
+    print("\n[LECTURE]")
+    print(
+        f"  l'erreur moyenne vaut {mae / mediane:.1f}x la mediane de la cible "
+        f"({_euros(mae)} contre {_euros(mediane)})"
+    )
+    print(
+        f"  la rmse vaut {rmse / mae:.1f}x la mae : "
+        "quelques tres grosses erreurs dominent le total"
+    )
+    print(
+        f"  la mape de {metrics['mape']:.0f} % vient des petits clients, "
+        "ou une erreur modeste pese enormement en relatif"
+    )
 
 
 def log_carbon_footprint(

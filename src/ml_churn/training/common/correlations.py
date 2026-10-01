@@ -14,9 +14,19 @@ les coefficients d'un modele lineaire.
 
 from __future__ import annotations
 
-import pandas as pd
+from pathlib import Path
 
+import pandas as pd
+from matplotlib.figure import Figure
+
+from ml_churn.ingestion.db import PROJECT_ROOT
 from ml_churn.training.common.data import load_gold, load_silver
+from ml_churn.training.common.explain import display_figure
+from ml_churn.training.common.plots import correlation_matrix_figure
+
+# Hors de `visualization/graphs`, que `plot_all` vide a chaque execution : ces
+# figures viennent du notebook d'entrainement, pas des scripts d'exploration.
+CORRELATIONS_DIR = PROJECT_ROOT / "src" / "visualization" / "correlation"
 
 # Colonnes numeriques sans interet pour l'analyse : identifiants techniques.
 EXCLUSIONS = ("id",)
@@ -46,6 +56,17 @@ def log_seuils() -> None:
         f"[SEUILS] redondance |r| >= {SEUIL_REDONDANCE:.2f}  |  "
         f"filtre de la matrice : r > {SEUIL_POSITIF:+.2f} ou r < {SEUIL_NEGATIF:+.2f}"
     )
+
+
+def save_correlation_figure(figure: Figure, nom: str) -> Path:
+    """Ecrit la figure dans `visualization/correlation` et logue le chemin."""
+    CORRELATIONS_DIR.mkdir(parents=True, exist_ok=True)
+    chemin = CORRELATIONS_DIR / f"{nom}.png"
+    figure.savefig(chemin, dpi=120, bbox_inches="tight")
+
+    print(f"[FIGURE] {chemin.relative_to(PROJECT_ROOT)}")
+
+    return chemin
 
 
 def _correlations(df: pd.DataFrame, target: str) -> pd.DataFrame:
@@ -121,3 +142,33 @@ def filter_correlations(matrice: pd.DataFrame, *, echo: bool = True) -> pd.DataF
         )
 
     return filtree
+
+
+def analyser_correlations(*, classification: str, regression: str) -> None:
+    """Les deux recherches du notebook, en un appel.
+
+    Les logs sont lus sur la gold, celle que les modeles consomment. Les
+    figures viennent de la silver : une colonne par variable metier, donc une
+    matrice lisible, la ou les 67 colonnes numeriques de la gold ne le sont pas.
+    """
+    log_seuils()
+
+    roles = ((classification, "classification"), (regression, "regression"))
+    for numero, (cible, role) in enumerate(roles, start=1):
+        log_titre(f"ANALYSE {numero} - {cible.upper()} (cible de {role})")
+        log_correlations(gold_correlations(cible), cible, couche="gold")
+
+    matrice = silver_correlations(regression)
+    figures = (
+        (matrice, "Corrélations — couche silver", "correlations_silver"),
+        (
+            filter_correlations(matrice),
+            "Corrélations marquantes — couche silver",
+            "correlations_silver_marquantes",
+        ),
+    )
+
+    for donnees, titre, nom in figures:
+        figure = correlation_matrix_figure(donnees, titre=titre)
+        save_correlation_figure(figure, nom)
+        display_figure(figure)

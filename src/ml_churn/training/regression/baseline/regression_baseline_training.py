@@ -49,13 +49,16 @@ EXCLUSIONS: dict[str, str] = {
     "churn": "cible des modeles de classification",
 }
 
-# Features retenues : les dix colonnes gold les plus correlees a la cible. Les
+# Features retenues : les colonnes gold les plus correlees a la cible. Les
 # modalites one-hot en font partie -- elles n'apparaissent qu'apres encodage,
 # une matrice de correlation lue sur la silver les manquerait.
+#
+# `sieges_souscrits` et `utilisateurs_actifs` sont ecartees : correlees a
+# `revenu_mensuel_recurrent_eur` a +0.92 et +0.80, elles n'apportent rien
+# (R2 0.606 -> 0.605) et rendaient les coefficients illisibles -- celui des
+# sieges ressortait negatif dans 95 % des reechantillonnages.
 FEATURES_RETENUES: tuple[str, ...] = (
     "revenu_mensuel_recurrent_eur",
-    "sieges_souscrits",
-    "utilisateurs_actifs",
     "taille_entreprise_ge",
     "plan_ent",
     "fonctionnalites_utilisees",
