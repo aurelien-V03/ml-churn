@@ -341,7 +341,6 @@ l'environnement de la CI est alors exactement celui du poste.
 
 - bien penser a versionner les modeles avec leurs donnes
 - ajouter makefile
-- train/test contamination ? spliter avant le prepocessing
 - mettre clé API dans FastAPI
 - Parler du retour sur investissement (fidelisation, notoriete...)
 - infra a mettre en place
