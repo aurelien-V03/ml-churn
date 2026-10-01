@@ -18,6 +18,11 @@ LIBELLES = ("reste", "churn")
 # depasse ce qu'un ecran affiche.
 MAX_ANNOTATIONS = 22
 TAILLE_MAX = 16
+
+# Bornes de la police des noms de colonnes : lisible sur une petite matrice
+# sans deborder, lisible encore sur une matrice large.
+POLICE_MIN_AXES = 7
+POLICE_MAX_AXES = 11
 SIGLES = (("TN", "FP"), ("FN", "TP"))
 
 
@@ -65,7 +70,8 @@ def correlation_matrix_figure(matrice, *, titre: str) -> Figure:
     # les cases : la figure est plafonnee et seules les couleurs subsistent.
     annoter = len(matrice) <= MAX_ANNOTATIONS
     taille = min(0.55 * len(matrice) + 3, TAILLE_MAX)
-    police = max(3, round(60 / len(matrice)))
+    # Plancher a 7 points : en dessous, les noms de colonnes ne se lisent plus.
+    police = min(POLICE_MAX_AXES, max(POLICE_MIN_AXES, round(140 / len(matrice))))
 
     figure = Figure(figsize=(taille, taille))
     axes = figure.subplots()

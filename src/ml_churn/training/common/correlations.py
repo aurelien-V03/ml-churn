@@ -30,6 +30,23 @@ SEUIL_REDONDANCE = 0.8
 SEUIL_POSITIF = 0.5
 SEUIL_NEGATIF = -0.2
 
+# Largeur du bandeau qui separe deux recherches dans le log.
+LARGEUR_BANDEAU = 70
+
+
+def log_titre(intitule: str) -> None:
+    """Bandeau de separation : deux recherches ne doivent pas se confondre."""
+    barre = "=" * LARGEUR_BANDEAU
+    print(f"\n{barre}\n{intitule}\n{barre}")
+
+
+def log_seuils() -> None:
+    """Les seuils appliques, pour que le log se lise sans ouvrir le code."""
+    print(
+        f"[SEUILS] redondance |r| >= {SEUIL_REDONDANCE:.2f}  |  "
+        f"filtre de la matrice : r > {SEUIL_POSITIF:+.2f} ou r < {SEUIL_NEGATIF:+.2f}"
+    )
+
 
 def _correlations(df: pd.DataFrame, target: str) -> pd.DataFrame:
     """Matrice de correlation de Pearson, cible en derniere position."""
@@ -68,7 +85,10 @@ def log_correlations(
     paires = paires[[gauche < droite for gauche, droite in paires.index]]
     paires = paires[paires.abs() >= SEUIL_REDONDANCE]
 
-    print(f"\n[REDONDANCE] couche {couche}, paires au-dela de {SEUIL_REDONDANCE:.0%}")
+    print(
+        f"\n[REDONDANCE] couche {couche}, paires de features liees entre elles "
+        f"(seuil |r| >= {SEUIL_REDONDANCE:.2f})"
+    )
     if paires.empty:
         print("  aucune")
         return
@@ -78,7 +98,7 @@ def log_correlations(
         print(f"  {gauche:<30} {droite:<30} {valeur:+.2f}")
 
 
-def filter_correlations(matrice: pd.DataFrame) -> pd.DataFrame:
+def filter_correlations(matrice: pd.DataFrame, *, echo: bool = True) -> pd.DataFrame:
     """Ne conserve que les correlations marquantes, diagonale exclue.
 
     Les cases retenues sont celles au-dessus de `SEUIL_POSITIF` ou en dessous
@@ -91,4 +111,13 @@ def filter_correlations(matrice: pd.DataFrame) -> pd.DataFrame:
 
     lignes = filtree.notna().any(axis=1)
     colonnes = filtree.notna().any(axis=0)
-    return filtree.loc[lignes, colonnes]
+    filtree = filtree.loc[lignes, colonnes]
+
+    if echo:
+        print(
+            f"\n[FILTRE] cases conservees : r > {SEUIL_POSITIF:+.2f} ou "
+            f"r < {SEUIL_NEGATIF:+.2f}, diagonale exclue "
+            f"-> {len(filtree)} colonnes sur {len(matrice)}"
+        )
+
+    return filtree
