@@ -24,7 +24,6 @@ from typing import Any
 import optuna
 import pandas as pd
 import typer
-from sklearn.metrics import roc_auc_score
 
 from ml_churn.training.classification.final.classification_xgboost_training import (
     EXPERIMENT,
@@ -40,6 +39,7 @@ from ml_churn.training.common.metrics import (
     classification_metrics,
     confusion_at_threshold,
     objective_score,
+    rank_metrics,
 )
 from ml_churn.training.common.plots import confusion_matrix_figure
 from ml_churn.training.common.tracking import mlflow_tracking
@@ -64,7 +64,7 @@ TYPES_XGBOOST = ["xgboost.core.Booster", "xgboost.sklearn.XGBClassifier"]
 # Colonnes du suivi essai par essai.
 EN_TETE_ESSAIS = (
     f"{'essai':>7} {'score':>8} {'seuil':>7} {'recall':>8} {'precision':>10} "
-    f"{'FPR':>7} {'auc':>7}"
+    f"{'FPR':>7} {'roc_auc':>8} {'pr_auc':>8}"
 )
 
 
@@ -80,7 +80,8 @@ def _ligne_essai(
     return (
         f"  {f'{numero + 1}/{total}':>7} {score:>8.2f} {seuil:>7.2f} "
         f"{metrics['recall']:>8.2f} {metrics['precision']:>10.2f} "
-        f"{metrics['false_positive_rate']:>7.2f} {metrics['auc']:>7.2f}"
+        f"{metrics['false_positive_rate']:>7.2f} "
+        f"{metrics['roc_auc']:>8.2f} {metrics['pr_auc']:>8.2f}"
         f"{'  <- meilleur' if progres else ''}"
     )
 
@@ -171,8 +172,9 @@ def _rechercher(*, objectif: str, n_essais: int, echo: bool) -> Tuning:
 
         proba = model.predict_proba(split.X_validation)[:, 1]
         matrice = confusion_at_threshold(split.y_validation, proba, seuil)
-        metrics = classification_metrics(matrice)
-        metrics["auc"] = roc_auc_score(split.y_validation, proba)
+        metrics = classification_metrics(matrice) | rank_metrics(
+            split.y_validation, proba
+        )
         score = objective_score(metrics, objectif)
 
         # Un run independant par essai : ils se comparent directement dans
@@ -245,8 +247,9 @@ def _rechercher(*, objectif: str, n_essais: int, echo: bool) -> Tuning:
 
     proba_test = model.predict_proba(split.X_test)[:, 1]
     matrice_test = confusion_at_threshold(split.y_test, proba_test, seuil)
-    metrics_test = classification_metrics(matrice_test)
-    metrics_test["auc"] = roc_auc_score(split.y_test, proba_test)
+    metrics_test = classification_metrics(matrice_test) | rank_metrics(
+        split.y_test, proba_test
+    )
 
     with mlflow_tracking.run(
         EXPERIMENT,
@@ -310,7 +313,7 @@ def _log(resultat: Tuning, objectif: str) -> None:
             f"  {int(ligne['essai']) + 1:>7} {ligne['score']:>8.2f} "
             f"{ligne['seuil']:>7.2f} {ligne['recall']:>8.2f} "
             f"{ligne['precision']:>10.2f} {ligne['false_positive_rate']:>7.2f} "
-            f"{ligne['auc']:>7.2f}"
+            f"{ligne['roc_auc']:>8.2f} {ligne['pr_auc']:>8.2f}"
         )
 
     print(f"\n  runs enregistres dans {mlflow_tracking.TRACKING_DB} (uv run mlflow ui)")

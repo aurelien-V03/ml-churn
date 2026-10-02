@@ -5,6 +5,7 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 from sklearn.metrics import (
+    average_precision_score,
     confusion_matrix,
     mean_absolute_error,
     mean_absolute_percentage_error,
@@ -18,8 +19,23 @@ FORMULES: dict[str, str] = {
     "recall": "TP / (TP+FN)",
     "false_positive_rate": "FP / (FP+TN)",
     "precision": "TP / (TP+FP)",
-    "auc": "aire sous la courbe ROC (independante du seuil)",
+    "roc_auc": "aire sous la courbe ROC, reference 0.5 (independante du seuil)",
+    "pr_auc": "aire sous la courbe precision-rappel, reference = part de churn",
 }
+
+
+def rank_metrics(y: pd.Series, probabilities: np.ndarray) -> dict[str, float]:
+    """Metriques lues sur les probabilites, donc independantes du seuil.
+
+    La ROC compte les vrais negatifs, majoritaires ici : elle flatte le modele
+    sur un jeu desequilibre, comme le ferait l'accuracy. La courbe
+    precision-rappel ne regarde que les deux metriques qui nous interessent,
+    et sa reference n'est pas 0.5 mais la part de churn du jeu.
+    """
+    return {
+        "roc_auc": float(roc_auc_score(y, probabilities)),
+        "pr_auc": float(average_precision_score(y, probabilities)),
+    }
 
 
 def _ratio(numerateur: float, denominateur: float) -> float:
@@ -99,14 +115,13 @@ def evaluate_at_threshold(
 ) -> tuple[dict[str, float], np.ndarray]:
     """Metriques et matrice de confusion d'un modele deja entraine.
 
-    L'AUC se calcule sur les probabilites, pas sur la matrice : elle ne depend
-    d'aucun seuil de decision.
+    Les deux AUC se calculent sur les probabilites, pas sur la matrice : elles
+    ne dependent d'aucun seuil de decision.
     """
     probabilities = model.predict_proba(X)[:, 1]
     matrice = confusion_at_threshold(y, probabilities, seuil)
 
-    metrics = classification_metrics(matrice)
-    metrics["auc"] = roc_auc_score(y, probabilities)
+    metrics = classification_metrics(matrice) | rank_metrics(y, probabilities)
 
     return metrics, matrice
 
