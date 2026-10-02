@@ -42,10 +42,24 @@ def shap_values(model: Pipeline, X: pd.DataFrame) -> shap.Explanation:
     )
 
     if shap.explainers.Tree.supports_model_with_masker(estimateur, None):
-        return shap.TreeExplainer(estimateur)(donnees)
+        return _classe_positive(shap.TreeExplainer(estimateur)(donnees))
 
     reference = shap.maskers.Independent(donnees, max_samples=len(donnees))
-    return shap.LinearExplainer(estimateur, reference)(donnees)
+    return _classe_positive(shap.LinearExplainer(estimateur, reference)(donnees))
+
+
+def _classe_positive(valeurs: shap.Explanation) -> shap.Explanation:
+    """Ramene une explication multi-classes a la seule classe positive.
+
+    Les forets de scikit-learn rendent un tableau (lignes, features, classes),
+    la une par classe, la ou XGBoost n'en rend qu'un pour la probabilite de
+    churn. Les graphiques attendent deux dimensions : on garde la derniere
+    classe, qui est la positive dans un probleme binaire.
+    """
+    if valeurs.values.ndim != 3:
+        return valeurs
+
+    return valeurs[..., -1]
 
 
 def _nombre_de_lignes(max_features: int | None, X: pd.DataFrame) -> int:
@@ -140,12 +154,22 @@ def log_shap_figures(model: Pipeline, X: pd.DataFrame, *, contexte: str) -> None
     )
 
 
-def display_figure(figure: plt.Figure) -> None:
+# Resolution du rendu, et largeur d'affichage dans le notebook. Les deux sont
+# distinctes : le PNG reste net sur un ecran dense, mais occupe moins de place.
+DPI_AFFICHAGE = 110
+LARGEUR_AFFICHAGE = 820
+
+
+def display_figure(figure: plt.Figure, *, largeur: int | None = None) -> None:
     """Affiche la figure dans un notebook ; sans effet en ligne de commande.
 
     Le PNG est rendu ici puis passe a IPython plutot que de laisser le notebook
     afficher l'objet figure : l'affichage automatique depend du backend actif,
     que rien ne garantit dans un notebook ayant deja importe d'autres modules.
+
+    Le rendu reste en pleine resolution -- il reste net sur un ecran dense --
+    mais son affichage est ramene a `largeur` pixels pour ne pas occuper un
+    ecran entier dans le notebook.
     """
     try:
         from IPython.core.getipython import get_ipython
@@ -157,6 +181,13 @@ def display_figure(figure: plt.Figure) -> None:
         return
 
     tampon = io.BytesIO()
-    figure.savefig(tampon, format="png", dpi=110, bbox_inches="tight")
-    display(Image(data=tampon.getvalue()))
+    figure.savefig(tampon, format="png", dpi=DPI_AFFICHAGE, bbox_inches="tight")
+
+    # Seules les figures plus larges que la limite sont reduites : une petite
+    # figure ne doit pas etre agrandie, elle deviendrait floue.
+    naturelle = round(figure.get_figwidth() * DPI_AFFICHAGE)
+    limite = largeur or LARGEUR_AFFICHAGE
+    affichee = min(naturelle, limite)
+
+    display(Image(data=tampon.getvalue(), width=affichee))
     plt.close(figure)
