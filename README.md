@@ -338,10 +338,3 @@ manuellement via *Run workflow*. Un seul job, sans base de données :
 l'environnement de la CI est alors exactement celui du poste.
 
 # 6 TODO
-
-- bien penser a versionner les modeles avec leurs donnes
-- ajouter makefile
-- mettre clé API dans FastAPI
-- Parler du retour sur investissement (fidelisation, notoriete...)
-- infra a mettre en place
-- reentrainement (+ parler de la veille techno)
